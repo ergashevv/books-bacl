@@ -211,7 +211,17 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
         let currentPageNum = 1;
         const container = document.getElementById('pdf-container');
         
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        // Check if pdfjsLib is loaded
+        if (typeof pdfjsLib === 'undefined') {
+            console.error('PDF.js library not loaded!');
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'error',
+                message: 'PDF.js library yuklanmadi. Internet aloqasini tekshiring.'
+            }));
+        } else {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            console.log('PDF.js library loaded successfully');
+        }
         
         function renderPage(pageNum) {
             pdfDoc.getPage(pageNum).then(function(page) {
@@ -328,7 +338,22 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
             }
         }
         
-        window.addEventListener('load', loadPDF);
+        // Wait for PDF.js to load before trying to load PDF
+        if (typeof pdfjsLib !== 'undefined') {
+            window.addEventListener('load', loadPDF);
+        } else {
+            // Retry after a delay if PDF.js hasn't loaded
+            setTimeout(function() {
+                if (typeof pdfjsLib !== 'undefined') {
+                    loadPDF();
+                } else {
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'error',
+                        message: 'PDF.js library yuklanmadi. Internet aloqasini tekshiring.'
+                    }));
+                }
+            }, 2000);
+        }
         
         let scrollTimeout;
         window.addEventListener('scroll', function() {
