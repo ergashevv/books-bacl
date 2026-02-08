@@ -1,4 +1,3 @@
-import { Platform } from 'react-native';
 import { create } from 'zustand';
 import { AudioTrack, Book, BookProgress, Category } from '../types';
 
