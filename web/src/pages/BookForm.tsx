@@ -66,6 +66,20 @@ const BookForm = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // Validate category_id
+        if (!form.category_id) {
+            alert('Iltimos, kategoriyani tanlang');
+            return;
+        }
+        
+        // Check if category exists in loaded categories
+        const categoryExists = categories.some(cat => cat.id === form.category_id);
+        if (!categoryExists) {
+            alert('Tanlangan kategoriya mavjud emas. Iltimos, boshqa kategoriyani tanlang.');
+            return;
+        }
+        
         setLoading(true);
         try {
             if (isEditing) {
@@ -74,8 +88,10 @@ const BookForm = () => {
                 await bookApi.create(form);
             }
             navigate('/');
-        } catch (error) {
-            alert('Saqlashda xatolik yuz berdi');
+        } catch (error: any) {
+            const errorMessage = error?.response?.data?.error || error?.message || 'Saqlashda xatolik yuz berdi';
+            alert(errorMessage);
+            console.error('Book save error:', error);
         } finally {
             setLoading(false);
         }
