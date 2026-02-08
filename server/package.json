@@ -5,7 +5,7 @@
   "main": "dist/api.js",
   "type": "commonjs",
   "scripts": {
-    "start": "NODE_OPTIONS='--max-old-space-size=300 --no-warnings' node dist/api.js"
+    "start": "NODE_OPTIONS='--max-old-space-size=350 --no-warnings --expose-gc --optimize-for-size' node dist/api.js"
   },
   "dependencies": {
     "cors": "^2.8.6",

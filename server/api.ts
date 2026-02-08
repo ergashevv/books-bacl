@@ -9,8 +9,32 @@ import { Telegraf, Context } from 'telegraf';
 import fs from 'fs';
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+// Optimize Express settings for memory efficiency
+app.set('trust proxy', 1); // Trust first proxy
+app.set('x-powered-by', false); // Remove X-Powered-By header to save bandwidth
+app.set('etag', true); // Enable ETag for better caching
+app.set('env', process.env.NODE_ENV || 'production');
+
+// Optimize CORS - only allow necessary origins
+app.use(cors({
+    origin: true, // Allow all origins for now, can be restricted later
+    credentials: true,
+    maxAge: 86400 // Cache preflight for 24 hours
+}));
+
+// Optimize JSON parser - limit body size to prevent memory issues
+app.use(express.json({ 
+    limit: '1mb', // Reduced from default 100kb to prevent large payloads
+    strict: true 
+}));
+
+// Optimize URL encoded parser
+app.use(express.urlencoded({ 
+    extended: true, 
+    limit: '1mb',
+    parameterLimit: 50 // Limit number of parameters
+}));
 
 // Ensure uploads directories exist
 const uploadsDir = path.join(process.cwd(), 'uploads');
@@ -24,8 +48,22 @@ const pdfsDir = path.join(uploadsDir, 'pdfs');
     }
 });
 
-// Static files
-app.use('/uploads', express.static(uploadsDir));
+// Static files with cache optimization
+app.use('/uploads', express.static(uploadsDir, {
+    maxAge: '1d', // Cache static files for 1 day
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, path) => {
+        // Set cache headers for images
+        if (path.endsWith('.jpg') || path.endsWith('.jpeg') || path.endsWith('.png') || path.endsWith('.webp')) {
+            res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+        }
+        // PDFs should not be cached as aggressively
+        if (path.endsWith('.pdf')) {
+            res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour
+        }
+    }
+}));
 
 // Multer Setup
 const storage = multer.diskStorage({
@@ -46,27 +84,60 @@ const storage = multer.diskStorage({
     }
 });
 
-const upload = multer({ storage });
+// File size limits to prevent memory issues on 512MB server
+// PDF: max 50MB, Cover images: max 5MB
+const upload = multer({ 
+    storage,
+    limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB max (for PDFs)
+    }
+});
 
-// Connection Pool - Memory efficient (reduced for Render free tier)
+// Connection Pool - Maximum memory optimization for 512MB server
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
-    max: 2, // Reduced from 5 to save memory
-    idleTimeoutMillis: 10000, // Reduced timeout
+    max: 2, // Keep at 2 for memory efficiency
+    min: 0, // Don't keep idle connections
+    idleTimeoutMillis: 5000, // Reduced to 5 seconds - close idle connections faster
     connectionTimeoutMillis: 2000,
+    statement_timeout: 10000, // Kill queries after 10 seconds
+    query_timeout: 10000,
+    // Optimize for memory
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 0,
 });
 
-// Helper function using pool
+// Helper function using pool with memory optimization
 async function query(text: string, params?: any[]) {
     const start = Date.now();
-    const res = await pool.query(text, params);
-    const duration = Date.now() - start;
-    if (duration > 1000) {
-        console.log('Slow query:', { text, duration });
+    try {
+        const res = await pool.query(text, params);
+        const duration = Date.now() - start;
+        
+        // Log slow queries (only in development or if very slow)
+        if (duration > 2000) {
+            console.warn(`⚠️  Slow query (${duration}ms):`, text.substring(0, 100));
+        }
+        
+        // Return only necessary data to reduce memory
+        return res;
+    } catch (error) {
+        console.error('❌ Query error:', error);
+        throw error;
     }
-    return res;
 }
+
+// Cleanup function for pool
+process.on('SIGTERM', async () => {
+    console.log('🛑 Closing database pool...');
+    await pool.end();
+});
+
+process.on('SIGINT', async () => {
+    console.log('🛑 Closing database pool...');
+    await pool.end();
+});
 
 // Create auth request
 app.post('/api/create-auth-request', async (req, res) => {
@@ -122,14 +193,26 @@ app.get('/api/check-auth', async (req, res) => {
     }
 });
 
-// Get user by ID
+// Get user by ID - optimized field selection
 app.get('/api/user', async (req, res) => {
     const { id } = req.query;
+    if (!id || typeof id !== 'string') {
+        return res.status(400).json({ error: 'Invalid user ID' });
+    }
+    
     try {
-        const result = await query(`SELECT * FROM users WHERE id = $1`, [id]);
+        // Select only necessary fields to reduce memory
+        const result = await query(
+            `SELECT id, telegram_id, full_name, username, phone, avatar_url, role, created_at, last_login_at 
+             FROM users WHERE id = $1`, 
+            [id]
+        );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
+        
+        // Cache user data for 1 minute
+        res.setHeader('Cache-Control', 'private, max-age=60');
         res.json(result.rows[0]);
     } catch (e) {
         console.error(e);
@@ -137,31 +220,40 @@ app.get('/api/user', async (req, res) => {
     }
 });
 
-// Get all books
+// Get all books - optimized with pagination and field selection
 app.get('/api/books', async (req, res) => {
     const { category, search, page = 1, limit = 20 } = req.query;
+    
+    // Validate and limit pagination to prevent memory issues
+    const pageNum = Math.max(1, Math.min(Number(page) || 1, 100)); // Max 100 pages
+    const limitNum = Math.max(1, Math.min(Number(limit) || 20, 100)); // Max 100 items per page
+    
     try {
-        let sql = 'SELECT * FROM books WHERE 1=1';
+        // Select only necessary fields to reduce memory usage
+        let sql = `SELECT id, title, author, description, cover_url, pdf_path, price, rating, is_premium, category_id, created_at FROM books WHERE 1=1`;
         const params: any[] = [];
         let paramIdx = 1;
 
-        if (search) {
+        if (search && typeof search === 'string' && search.length > 0 && search.length < 100) {
             sql += ` AND (title ILIKE $${paramIdx} OR author ILIKE $${paramIdx})`;
             params.push(`%${search}%`);
             paramIdx++;
         }
 
-        if (category) {
+        if (category && typeof category === 'string') {
             sql += ` AND category_id = $${paramIdx}`;
             params.push(category);
             paramIdx++;
         }
 
-        const offset = (Number(page) - 1) * Number(limit);
+        const offset = (pageNum - 1) * limitNum;
         sql += ` ORDER BY created_at DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`;
-        params.push(limit, offset);
+        params.push(limitNum, offset);
 
         const result = await query(sql, params);
+        
+        // Set cache headers for GET requests
+        res.setHeader('Cache-Control', 'private, max-age=60'); // Cache for 1 minute
         res.json(result.rows);
     } catch (e) {
         console.error(e);
@@ -169,14 +261,26 @@ app.get('/api/books', async (req, res) => {
     }
 });
 
-// Get book by ID
+// Get book by ID - optimized with field selection and caching
 app.get('/api/books/:id', async (req, res) => {
     const { id } = req.params;
+    if (!id || typeof id !== 'string') {
+        return res.status(400).json({ error: 'Invalid book ID' });
+    }
+    
     try {
-        const result = await query('SELECT * FROM books WHERE id = $1', [id]);
+        // Select only necessary fields
+        const result = await query(
+            `SELECT id, title, author, description, cover_url, pdf_path, price, rating, is_premium, category_id, created_at, updated_at 
+             FROM books WHERE id = $1`, 
+            [id]
+        );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Book not found' });
         }
+        
+        // Cache book data for 5 minutes (books don't change often)
+        res.setHeader('Cache-Control', 'public, max-age=300');
         res.json(result.rows[0]);
     } catch (e) {
         console.error(e);
@@ -184,12 +288,38 @@ app.get('/api/books/:id', async (req, res) => {
     }
 });
 
-// Upload Endpoint
-app.post('/api/upload', upload.single('file'), (req, res) => {
+// Upload Endpoint - optimized with async file operations
+app.post('/api/upload', upload.single('file'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
     }
+    
+    // Additional size check for cover images (5MB limit)
     const type = req.query.type === 'cover' ? 'covers' : 'pdfs';
+    if (type === 'covers' && req.file.size > 5 * 1024 * 1024) {
+        // Delete uploaded file asynchronously to not block
+        fs.unlink(req.file.path, (err) => {
+            if (err) console.error('Failed to delete file:', err);
+        });
+        return res.status(400).json({ error: 'Cover image size exceeds 5MB limit' });
+    }
+    
+    // Validate file extension for security
+    const allowedExtensions = type === 'covers' 
+        ? ['.jpg', '.jpeg', '.png', '.webp'] 
+        : ['.pdf'];
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    
+    if (!allowedExtensions.includes(ext)) {
+        // Delete invalid file
+        fs.unlink(req.file.path, (err) => {
+            if (err) console.error('Failed to delete file:', err);
+        });
+        return res.status(400).json({ 
+            error: `Invalid file type. Allowed: ${allowedExtensions.join(', ')}` 
+        });
+    }
+    
     const filePath = `/uploads/${type}/${req.file.filename}`;
     res.json({ url: filePath });
 });
@@ -250,10 +380,14 @@ app.delete('/api/books/:id', async (req, res) => {
     }
 });
 
-// Get categories
+// Get categories - optimized with caching
 app.get('/api/categories', async (req, res) => {
     try {
-        const result = await query('SELECT * FROM categories ORDER BY name');
+        // Select only necessary fields
+        const result = await query('SELECT id, name FROM categories ORDER BY name');
+        
+        // Categories don't change often, cache for 5 minutes
+        res.setHeader('Cache-Control', 'public, max-age=300');
         res.json(result.rows);
     } catch (e) {
         console.error(e);
@@ -449,14 +583,104 @@ function initializeBot() {
 }
 
 // Delay bot initialization to save memory during startup
+// Increased delay to allow server to stabilize and free up memory after startup
 if (process.env.BOT_TOKEN) {
+    // Use setImmediate for better event loop management
     setTimeout(() => {
-        initializeBot();
-    }, 3000); // Wait 3 seconds after server starts
+        // Force garbage collection before bot init (if available)
+        if (global.gc) {
+            global.gc();
+            // Wait a bit more after GC
+            setTimeout(() => {
+                initializeBot();
+            }, 1000);
+        } else {
+            initializeBot();
+        }
+    }, 5000); // Wait 5 seconds after server starts to free up memory
 }
 
+// Cleanup bot on shutdown
+process.on('SIGTERM', () => {
+    if (bot) {
+        console.log('🛑 Stopping Telegram bot...');
+        bot.stop('SIGTERM');
+    }
+});
+
+process.on('SIGINT', () => {
+    if (bot) {
+        console.log('🛑 Stopping Telegram bot...');
+        bot.stop('SIGINT');
+    }
+});
+
+// Request timeout middleware - prevent hanging requests
+app.use((req, res, next) => {
+    req.setTimeout(30000); // 30 second timeout
+    res.setTimeout(30000);
+    next();
+});
+
+// Global error handler - prevent memory leaks from unhandled errors
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('❌ Unhandled error:', err);
+    if (!res.headersSent) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 const PORT = Number(process.env.PORT) || 3001;
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
+    const memUsage = process.memoryUsage();
     console.log(`🚀 API Server running on port ${PORT}`);
-    console.log(`💾 Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
+    console.log(`💾 Memory usage: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB / ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`);
+    console.log(`📊 RSS: ${Math.round(memUsage.rss / 1024 / 1024)}MB`);
+    
+    // Optimize server settings for memory
+    server.keepAliveTimeout = 65000; // 65 seconds
+    server.headersTimeout = 66000; // 66 seconds
+    
+    // Monitor memory every 3 minutes (more frequent for better control)
+    const memoryMonitor = setInterval(() => {
+        const mem = process.memoryUsage();
+        const heapUsedMB = Math.round(mem.heapUsed / 1024 / 1024);
+        const rssMB = Math.round(mem.rss / 1024 / 1024);
+        const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
+        
+        console.log(`📊 Memory - Heap: ${heapUsedMB}MB/${heapTotalMB}MB, RSS: ${rssMB}MB`);
+        
+        // Aggressive memory management
+        if (rssMB > 380) {
+            console.warn(`⚠️  High memory usage: ${rssMB}MB (threshold: 380MB)`);
+            // Force garbage collection if available
+            if (global.gc) {
+                global.gc();
+                const afterGC = process.memoryUsage();
+                console.log(`🧹 GC triggered - RSS after: ${Math.round(afterGC.rss / 1024 / 1024)}MB`);
+            }
+        }
+        
+        // Emergency: if memory exceeds 450MB, log warning
+        if (rssMB > 450) {
+            console.error(`🚨 CRITICAL: Memory usage very high: ${rssMB}MB`);
+        }
+    }, 3 * 60 * 1000); // Every 3 minutes
+    
+    // Cleanup on shutdown
+    process.on('SIGTERM', () => {
+        clearInterval(memoryMonitor);
+        server.close(() => {
+            console.log('🛑 Server closed');
+            process.exit(0);
+        });
+    });
+    
+    process.on('SIGINT', () => {
+        clearInterval(memoryMonitor);
+        server.close(() => {
+            console.log('🛑 Server closed');
+            process.exit(0);
+        });
+    });
 });

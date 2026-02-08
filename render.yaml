@@ -3,13 +3,13 @@ services:
     name: books-backend
     env: node
     plan: free
-    buildCommand: npm install typescript --save-dev && npm run build:server && cd server && npm install --omit=dev --no-audit --no-fund
+    buildCommand: NODE_OPTIONS='--max-old-space-size=400 --optimize-for-size' npm install typescript --save-dev --no-audit --no-fund --prefer-offline --no-save && NODE_OPTIONS='--max-old-space-size=400 --optimize-for-size' npm run build:server && cd server && NODE_OPTIONS='--max-old-space-size=400 --optimize-for-size' npm install --omit=dev --no-audit --no-fund --prefer-offline --no-save
     startCommand: cd server && npm start
     envVars:
       - key: NODE_VERSION
         value: 22.22.0
       - key: NODE_OPTIONS
-        value: --max-old-space-size=400
+        value: --max-old-space-size=350 --expose-gc --optimize-for-size --no-warnings
       - key: DATABASE_URL
         fromDatabase:
           name: books_db # Agar Render-da DB bo'lsa, aks holda qo'lda kiriting

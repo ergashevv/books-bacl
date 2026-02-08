@@ -11,7 +11,9 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "moduleResolution": "node",
-    "types": ["node"]
+    "types": ["node"],
+    "incremental": true,
+    "tsBuildInfoFile": "./server/.tsbuildinfo"
   },
   "include": ["server/**/*"],
   "exclude": ["node_modules", "dist"]
