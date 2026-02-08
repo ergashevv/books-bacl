@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  avatarUrl String? @map("avatar_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  reviews   Review[]
+
+  @@map("profiles") // Supabase usually uses 'profiles' table for public user data
+}
+
+model Book {
+  id          String   @id @default(uuid())
+  title       String
+  author      String
+  description String?  // Optional in type
+  coverPath   String?   @map("cover_path")
+  pdfPath     String?   @map("pdf_path")
+  price       Decimal?
+  rating      Float     @default(0)
+  isPremium   Boolean   @default(false) @map("is_premium")
+  views       Int       @default(0)
+  
+  // Relation to Category - sticking to One-to-Many for simplicity as per my plan
+  categoryId  String    @map("category_id")
+  category    Category  @relation(fields: [categoryId], references: [id])
+  
+  reviews     Review[]
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("books")
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  books     Book[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("categories")
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  text      String
+  rating    Int
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  bookId    String   @map("book_id")
+  book      Book     @relation(fields: [bookId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("reviews")
+}
+
