@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Layout from '../../components/Layout';
-import { useAuthStore } from '../../store/useAuthStore';
 import { useBookStore } from '../../store/useBookStore';
 import { Book } from '../../types';
 import { getImageUrl, getPdfUrl } from '../../utils/api';
