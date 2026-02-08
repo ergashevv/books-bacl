@@ -4,10 +4,12 @@ services:
     env: node
     plan: free
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: npm run start:api
     envVars:
       - key: NODE_VERSION
         value: 22.22.0
       - key: DATABASE_URL
         fromDatabase:
           name: books_db # Agar Render-da DB bo'lsa, aks holda qo'lda kiriting
+      - key: BOT_TOKEN
+        sync: false # Render dashboard'dan qo'lda qo'shing

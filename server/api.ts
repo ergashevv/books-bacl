@@ -6,19 +6,38 @@ import multer from 'multer';
 import path from 'path';
 import { Pool } from 'pg';
 import { Telegraf, Context } from 'telegraf';
+import fs from 'fs';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Ensure uploads directories exist
+const uploadsDir = path.join(process.cwd(), 'uploads');
+const coversDir = path.join(uploadsDir, 'covers');
+const pdfsDir = path.join(uploadsDir, 'pdfs');
+
+[uploadsDir, coversDir, pdfsDir].forEach(dir => {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+        console.log(`✅ Created directory: ${dir}`);
+    }
+});
+
 // Static files
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+app.use('/uploads', express.static(uploadsDir));
 
 // Multer Setup
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const type = req.query.type === 'cover' ? 'covers' : 'pdfs';
         const dir = path.join(process.cwd(), 'uploads', type);
+        
+        // Ensure directory exists
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        
         cb(null, dir);
     },
     filename: (req, file, cb) => {
