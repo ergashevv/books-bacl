@@ -5,8 +5,8 @@
   "main": "dist/api.js",
   "type": "commonjs",
   "scripts": {
-    "build": "NODE_OPTIONS='--max-old-space-size=280 --optimize-for-size' tsc --project ../tsconfig.server.json",
-    "start": "NODE_OPTIONS='--max-old-space-size=1500 --no-warnings --expose-gc --optimize-for-size' node dist/api.js"
+    "build": "NODE_OPTIONS='--max-old-space-size=1500 --no-warnings' tsc --project ../tsconfig.server.json",
+    "start": "NODE_OPTIONS='--max-old-space-size=1500 --no-warnings --expose-gc' node dist/api.js"
   },
   "dependencies": {
     "cors": "^2.8.6",
