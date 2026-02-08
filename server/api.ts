@@ -48,12 +48,17 @@ const pdfsDir = path.join(uploadsDir, 'pdfs');
     }
 });
 
-// Static files with cache optimization
+// Static files with cache optimization and CORS headers
 app.use('/uploads', express.static(uploadsDir, {
     maxAge: '1d', // Cache static files for 1 day
     etag: true,
     lastModified: true,
     setHeaders: (res, path) => {
+        // CORS headers for all static files
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        
         // Set cache headers for images
         if (path.endsWith('.jpg') || path.endsWith('.jpeg') || path.endsWith('.png') || path.endsWith('.webp')) {
             res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
@@ -61,9 +66,44 @@ app.use('/uploads', express.static(uploadsDir, {
         // PDFs should not be cached as aggressively
         if (path.endsWith('.pdf')) {
             res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour
+            res.setHeader('Content-Type', 'application/pdf');
         }
     }
 }));
+
+// Debug endpoint to check if file exists
+app.get('/api/check-file', async (req, res) => {
+    const { path: filePath } = req.query;
+    if (!filePath || typeof filePath !== 'string') {
+        return res.status(400).json({ error: 'Path parameter is required' });
+    }
+    
+    try {
+        // Remove leading slash if present
+        const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+        const fullPath = path.join(process.cwd(), cleanPath);
+        
+        // Security check - ensure path is within uploads directory
+        if (!fullPath.startsWith(uploadsDir)) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        
+        const exists = fs.existsSync(fullPath);
+        const stats = exists ? fs.statSync(fullPath) : null;
+        
+        res.json({
+            exists,
+            path: filePath,
+            fullPath: fullPath,
+            size: stats?.size || 0,
+            uploadsDir: uploadsDir,
+            filesInDir: exists ? fs.readdirSync(path.dirname(fullPath)).length : 0
+        });
+    } catch (e) {
+        console.error('File check error:', e);
+        res.status(500).json({ error: 'Failed to check file', details: String(e) });
+    }
+});
 
 // Multer Setup
 const storage = multer.diskStorage({

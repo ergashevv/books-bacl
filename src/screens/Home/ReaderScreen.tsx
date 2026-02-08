@@ -263,18 +263,30 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
             
             console.log('Loading PDF from:', pdfUrl);
             
+            console.log('Fetching PDF from:', pdfUrl);
+            
             fetch(pdfUrl, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/pdf',
                 },
                 mode: 'cors',
-                credentials: 'omit'
+                credentials: 'omit',
+                cache: 'no-cache'
             })
                 .then(response => {
+                    console.log('PDF Response status:', response.status, response.statusText);
+                    console.log('PDF Response headers:', Object.fromEntries(response.headers.entries()));
+                    
                     if (!response.ok) {
-                        throw new Error('PDF yuklanmadi: ' + response.status + ' ' + response.statusText);
+                        throw new Error('PDF yuklanmadi: ' + response.status + ' ' + response.statusText + '. URL: ' + pdfUrl);
                     }
+                    
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('pdf')) {
+                        console.warn('Warning: Content-Type is not PDF:', contentType);
+                    }
+                    
                     return response.arrayBuffer();
                 })
                 .then(data => {
@@ -578,6 +590,25 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
             console.log('WebView message:', data);
+            
+            if (data.type === 'error') {
+                console.error('PDF Error:', data.message);
+                setLoading(false);
+                Alert.alert(
+                    'Xatolik',
+                    data.message || 'PDF yuklanmadi. Iltimos, qayta urinib ko\'ring.',
+                    [
+                        { text: 'Orqaga', onPress: () => navigation.goBack() },
+                        { text: 'Qayta urinish', onPress: () => {
+                            setLoading(true);
+                            if (webViewRef.current) {
+                                webViewRef.current.reload();
+                            }
+                        }}
+                    ]
+                );
+                return;
+            }
             
             if (data.type === 'loaded') {
                 setTotalPages(data.totalPages || 1);
