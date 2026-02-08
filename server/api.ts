@@ -433,7 +433,20 @@ app.delete('/api/books/:id', async (req, res) => {
 app.get('/api/categories', async (req, res) => {
     try {
         // Select only necessary fields
-        const result = await query('SELECT id, name FROM categories ORDER BY name');
+        let result = await query('SELECT id, name FROM categories ORDER BY name');
+        
+        // If no categories exist, create default ones
+        if (result.rows.length === 0) {
+            console.log('⚠️  No categories found, creating default categories...');
+            await query(`
+                INSERT INTO categories (name) VALUES 
+                ('Fiction'), ('Technology'), ('Business'), ('Science'), ('History'), 
+                ('Biography'), ('Self-Help'), ('Education'), ('Art'), ('Other')
+                ON CONFLICT (name) DO NOTHING
+            `);
+            result = await query('SELECT id, name FROM categories ORDER BY name');
+            console.log(`✅ Created ${result.rows.length} default categories`);
+        }
         
         // Categories don't change often, cache for 5 minutes
         res.setHeader('Cache-Control', 'public, max-age=300');
