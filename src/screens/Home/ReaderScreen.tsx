@@ -51,18 +51,29 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
 
     // Determine file type and URL
     useEffect(() => {
+        let url = '';
+        let type: BookFileType = 'pdf';
+        
         if (book) {
-            const type = routeFileType || getBookFileType(book);
-            const url = fileUrl || pdfUrl || getBookFileUrl(book);
-            setCurrentFileType(type);
-            setFileUrlState(url);
-        } else if (pdfUrl) {
-            setCurrentFileType('pdf');
-            setFileUrlState(pdfUrl);
+            type = routeFileType || getBookFileType(book);
+            url = fileUrl || pdfUrl || getBookFileUrl(book);
         } else if (fileUrl) {
-            setCurrentFileType(routeFileType || 'pdf');
-            setFileUrlState(fileUrl);
+            type = routeFileType || 'pdf';
+            url = fileUrl;
+        } else if (pdfUrl) {
+            type = 'pdf';
+            url = pdfUrl;
         }
+        
+        if (!url || url === '') {
+            Alert.alert('Xatolik', 'Kitob fayli URL topilmadi');
+            navigation.goBack();
+            return;
+        }
+        
+        console.log('Setting file URL:', url, 'Type:', type);
+        setCurrentFileType(type);
+        setFileUrlState(url);
     }, [book, pdfUrl, fileUrl, routeFileType]);
 
     // Load bookmarks and reading progress
@@ -240,20 +251,60 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
         }
         
         function loadPDF() {
-            fetch('${fileUrlState}')
-                .then(response => response.arrayBuffer())
+            const pdfUrl = '${fileUrlState}';
+            
+            if (!pdfUrl || pdfUrl === '') {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'error',
+                    message: 'PDF URL topilmadi'
+                }));
+                return;
+            }
+            
+            console.log('Loading PDF from:', pdfUrl);
+            
+            fetch(pdfUrl, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/pdf',
+                },
+                mode: 'cors',
+                credentials: 'omit'
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('PDF yuklanmadi: ' + response.status + ' ' + response.statusText);
+                    }
+                    return response.arrayBuffer();
+                })
                 .then(data => {
-                    pdfjsLib.getDocument({ data: data }).promise.then(function(pdf) {
+                    if (!data || data.byteLength === 0) {
+                        throw new Error('PDF fayli bo\'sh');
+                    }
+                    
+                    pdfjsLib.getDocument({ 
+                        data: data,
+                        httpHeaders: {
+                            'Accept': 'application/pdf'
+                        }
+                    }).promise.then(function(pdf) {
                         pdfDoc = pdf;
                         currentPageNum = 1;
                         container.innerHTML = '';
                         renderPage(1);
+                    }).catch(function(error) {
+                        console.error('PDF.js error:', error);
+                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                            type: 'error',
+                            message: 'PDF parse qilishda xatolik: ' + error.message
+                        }));
                     });
                 })
                 .catch(error => {
+                    console.error('Fetch error:', error);
                     window.ReactNativeWebView.postMessage(JSON.stringify({
                         type: 'error',
-                        message: error.message
+                        message: error.message || 'PDF yuklanmadi'
                     }));
                 });
         }
@@ -526,6 +577,8 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
     const handleWebViewMessage = (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
+            console.log('WebView message:', data);
+            
             if (data.type === 'loaded') {
                 setTotalPages(data.totalPages || 1);
                 setLoading(false);
@@ -534,7 +587,14 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
                 saveProgress(data.page);
             } else if (data.type === 'error') {
                 setLoading(false);
-                Alert.alert('Xatolik', data.message || 'Kitob yuklanmadi');
+                console.error('PDF Error:', data.message);
+                Alert.alert('Xatolik', data.message || 'Kitob yuklanmadi', [
+                    { text: 'Qaytish', onPress: () => navigation.goBack() },
+                    { text: 'Qayta urinish', onPress: () => {
+                        setLoading(true);
+                        webViewRef.current?.reload();
+                    }}
+                ]);
             }
         } catch (e) {
             console.error('Parse error:', e);
@@ -628,20 +688,35 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
                             transform: [{ rotateY: flipRotation }],
                         }}
                     >
-                        <WebView
-                            ref={webViewRef}
-                            source={{ html: currentFileType === 'epub' ? getEpubViewerHTML() : getPdfViewerHTML() }}
-                            onMessage={handleWebViewMessage}
-                            javaScriptEnabled={true}
-                            domStorageEnabled={true}
-                            style={{ 
-                                flex: 1, 
-                                backgroundColor: themeColors[theme].bg,
-                                opacity: loading ? 0 : 1,
-                            }}
-                            scrollEnabled={true}
-                            showsVerticalScrollIndicator={false}
-                        />
+                    <WebView
+                        ref={webViewRef}
+                        source={{ html: currentFileType === 'epub' ? getEpubViewerHTML() : getPdfViewerHTML() }}
+                        onMessage={handleWebViewMessage}
+                        javaScriptEnabled={true}
+                        domStorageEnabled={true}
+                        style={{ 
+                            flex: 1, 
+                            backgroundColor: themeColors[theme].bg,
+                            opacity: loading ? 0 : 1,
+                        }}
+                        scrollEnabled={true}
+                        showsVerticalScrollIndicator={false}
+                        onError={(syntheticEvent) => {
+                            const { nativeEvent } = syntheticEvent;
+                            console.error('WebView error:', nativeEvent);
+                            setLoading(false);
+                            Alert.alert('Xatolik', 'WebView yuklanmadi');
+                        }}
+                        onHttpError={(syntheticEvent) => {
+                            const { nativeEvent } = syntheticEvent;
+                            console.error('HTTP error:', nativeEvent.statusCode);
+                            setLoading(false);
+                            Alert.alert('Xatolik', `HTTP xatolik: ${nativeEvent.statusCode}`);
+                        }}
+                        onLoadEnd={() => {
+                            console.log('WebView loaded');
+                        }}
+                    />
                     </Animated.View>
                 )}
             </View>
