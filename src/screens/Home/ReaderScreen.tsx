@@ -4,7 +4,7 @@ import { ActivityIndicator, Animated, Dimensions, PanResponder, StatusBar, Text,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getBookFileUrl, getBookFileType } from '../../utils/api';
+import { getBookFileUrl, getBookFileType, API_URL } from '../../utils/api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PAGE_WIDTH = SCREEN_WIDTH - 40;
@@ -868,7 +868,12 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
 
             {/* Loading */}
             {loading && (
-                <View className="absolute inset-0 justify-center items-center" style={{ backgroundColor: themeColors[theme].bg }}>
+                <View 
+                    className="absolute inset-0 justify-center items-center" 
+                    style={{ backgroundColor: themeColors[theme].bg }}
+                    accessibilityViewIsModal={true}
+                    importantForAccessibility="yes"
+                >
                     <ActivityIndicator size="large" color="#34A853" />
                     <Text className="mt-4 text-base font-medium" style={{ color: themeColors[theme].text }}>
                         Kitob yuklanmoqda...
