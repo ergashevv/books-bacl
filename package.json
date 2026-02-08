@@ -4,7 +4,8 @@
   "scripts": {
     "start": "expo start",
     "start:expo": "expo start",
-    "start:api": "ts-node server/api.ts",
+    "start:api": "NODE_OPTIONS='--max-old-space-size=256' ts-node --transpile-only server/api.ts",
+    "start:api:prod": "node --loader ts-node/esm server/api.ts",
     "start:bot": "ts-node scripts/telegram_bot.ts",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",

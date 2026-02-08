@@ -48,12 +48,12 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Connection Pool - Memory efficient
+// Connection Pool - Memory efficient (reduced for Render free tier)
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
-    max: 5, // Maximum pool size
-    idleTimeoutMillis: 30000,
+    max: 2, // Reduced from 5 to save memory
+    idleTimeoutMillis: 10000, // Reduced timeout
     connectionTimeoutMillis: 2000,
 });
 
@@ -261,13 +261,31 @@ app.get('/api/categories', async (req, res) => {
     }
 });
 
-// Initialize Telegram Bot
+// Initialize Telegram Bot (lazy load to save memory)
 let bot: Telegraf | null = null;
 
 if (process.env.BOT_TOKEN) {
     try {
-        bot = new Telegraf(process.env.BOT_TOKEN);
-        console.log('🤖 Telegram Bot initializing...');
+        // Delay bot initialization to save memory during startup
+        setTimeout(() => {
+            try {
+                bot = new Telegraf(process.env.BOT_TOKEN!);
+                console.log('🤖 Telegram Bot initializing...');
+                initializeBot();
+            } catch (error) {
+                console.error('❌ Failed to initialize Telegram Bot:', error);
+            }
+        }, 2000); // Wait 2 seconds after server starts
+    } catch (error) {
+        console.error('❌ Failed to initialize Telegram Bot:', error);
+        console.log('⚠️  Server will continue without bot functionality');
+    }
+} else {
+    console.log('⚠️  BOT_TOKEN not found. Bot functionality disabled.');
+}
+
+function initializeBot() {
+    if (!bot) return;
 
         bot.start(async (ctx: Context) => {
             if (!ctx.message || !ctx.from) {
@@ -441,11 +459,17 @@ if (process.env.BOT_TOKEN) {
         console.error('❌ Failed to initialize Telegram Bot:', error);
         console.log('⚠️  Server will continue without bot functionality');
     }
-} else {
-    console.log('⚠️  BOT_TOKEN not found. Bot functionality disabled.');
+}
+
+// Delay bot initialization to save memory during startup
+if (process.env.BOT_TOKEN) {
+    setTimeout(() => {
+        initializeBot();
+    }, 3000); // Wait 3 seconds after server starts
 }
 
 const PORT = Number(process.env.PORT) || 3001;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API Server running on port ${PORT}`);
+    console.log(`💾 Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
 });
