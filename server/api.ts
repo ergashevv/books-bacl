@@ -264,30 +264,17 @@ app.get('/api/categories', async (req, res) => {
 // Initialize Telegram Bot (lazy load to save memory)
 let bot: Telegraf | null = null;
 
-if (process.env.BOT_TOKEN) {
-    try {
-        // Delay bot initialization to save memory during startup
-        setTimeout(() => {
-            try {
-                bot = new Telegraf(process.env.BOT_TOKEN!);
-                console.log('🤖 Telegram Bot initializing...');
-                initializeBot();
-            } catch (error) {
-                console.error('❌ Failed to initialize Telegram Bot:', error);
-            }
-        }, 2000); // Wait 2 seconds after server starts
-    } catch (error) {
-        console.error('❌ Failed to initialize Telegram Bot:', error);
-        console.log('⚠️  Server will continue without bot functionality');
-    }
-} else {
-    console.log('⚠️  BOT_TOKEN not found. Bot functionality disabled.');
-}
-
 function initializeBot() {
-    if (!bot) return;
+    if (!process.env.BOT_TOKEN) {
+        console.log('⚠️  BOT_TOKEN not found. Bot functionality disabled.');
+        return;
+    }
 
-        bot.start(async (ctx: Context) => {
+    try {
+        bot = new Telegraf(process.env.BOT_TOKEN);
+        console.log('🤖 Telegram Bot initializing...');
+
+    bot.start(async (ctx: Context) => {
             if (!ctx.message || !ctx.from) {
                 return ctx.reply('👋 Xush kelibsiz! Ilovani oching va "Telegram orqali kirish" tugmasini bosing.');
             }
