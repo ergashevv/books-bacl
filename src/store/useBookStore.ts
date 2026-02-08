@@ -21,7 +21,7 @@ interface BookState {
 }
 
 // API URL - Render backend
-const API_URL = 'https://books-bacl-1.onrender.com';
+const API_URL = 'https://books-bacl-2.onrender.com';
 
 export const useBookStore = create<BookState>((set, get) => ({
     books: [],

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { storage } from '../utils/storage';
 
 // API URL - Render backend
-const API_URL = 'https://books-bacl-1.onrender.com';
+const API_URL = 'https://books-bacl-2.onrender.com';
 interface AppUser {
     id: number;
     telegram_id: string;

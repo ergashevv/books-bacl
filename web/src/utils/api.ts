@@ -1,5 +1,5 @@
 // API utilities for web admin dashboard
-const API_URL = 'https://books-bacl-1.onrender.com';
+const API_URL = 'https://books-bacl-2.onrender.com';
 
 export const getImageUrl = (path?: string) => {
     if (!path) return 'https://via.placeholder.com/150';
