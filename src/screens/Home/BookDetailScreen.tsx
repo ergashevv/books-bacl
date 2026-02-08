@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Layout from '../../components/Layout';
 import { useBookStore } from '../../store/useBookStore';
 import { Book } from '../../types';
-import { getImageUrl, getPdfUrl } from '../../utils/api';
+import { getImageUrl, getPdfUrl, getBookFileUrl, getBookFileType } from '../../utils/api';
 
 type DetailRouteProp = RouteProp<{ Detail: { bookId: string } }, 'Detail'>;
 
@@ -36,13 +36,25 @@ const BookDetailScreen = () => {
     }, [loadData]);
 
     const handleRead = async () => {
-        if (!book || !book.pdf_path) {
-            Alert.alert("Notice", "This book is temporarily unavailable.");
+        if (!book) {
+            Alert.alert("Xatolik", "Kitob ma'lumotlari topilmadi.");
             return;
         }
+        
+        const fileUrl = getBookFileUrl(book);
+        const fileType = getBookFileType(book);
+        
+        if (!fileUrl) {
+            Alert.alert("Xatolik", "Kitob fayli mavjud emas.");
+            return;
+        }
+        
         updateProgress(book.id, 1);
         (navigation as any).navigate('Reader', { 
-            pdfUrl: getPdfUrl(book.pdf_path), 
+            book: book,
+            fileUrl: fileUrl,
+            fileType: fileType,
+            pdfUrl: getPdfUrl(book.pdf_path), // Fallback for compatibility
             title: book.title,
             bookId: book.id 
         });

@@ -2,17 +2,17 @@
   "name": "book",
   "version": "1.0.0",
   "scripts": {
-    "start": "ts-node server/api.ts",
+    "start": "expo start",
     "start:expo": "expo start",
+    "start:api": "ts-node server/api.ts",
+    "start:bot": "ts-node scripts/telegram_bot.ts",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
     "web-admin": "npm run dev --prefix web",
-    "lint": "expo lint",
-    "start-api": "ts-node server/api.ts"
+    "lint": "expo lint"
   },
-  "main": "server/api.ts",
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
     "@neondatabase/serverless": "^1.0.2",

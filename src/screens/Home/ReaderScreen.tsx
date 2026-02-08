@@ -1,15 +1,32 @@
-import { ChevronLeft, ChevronRight, Bookmark, BookmarkCheck, Settings2, Maximize, Minus, Plus } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Bookmark, BookmarkCheck, Settings2, Maximize, Minus, Plus, Type, AlignLeft } from 'lucide-react-native';
 import React, { useRef, useState, useEffect } from 'react';
-import { ActivityIndicator, Animated, Dimensions, PanResponder, StatusBar, Text, TouchableOpacity, View, ScrollView } from 'react-native';
+import { ActivityIndicator, Animated, Dimensions, PanResponder, StatusBar, Text, TouchableOpacity, View, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getBookFileUrl, getBookFileType } from '../../utils/api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PAGE_WIDTH = SCREEN_WIDTH - 40;
-const PAGE_HEIGHT = SCREEN_HEIGHT - 200;
 
-const ReaderScreen = ({ route, navigation }: any) => {
-    const { pdfUrl, title, bookId } = route.params;
+type BookFileType = 'pdf' | 'epub' | 'txt' | 'mobi';
+
+interface ReaderScreenProps {
+    route: {
+        params: {
+            book: any;
+            pdfUrl?: string;
+            fileUrl?: string;
+            fileType?: BookFileType;
+            title: string;
+            bookId: number;
+        };
+    };
+    navigation: any;
+}
+
+const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
+    const { book, pdfUrl, fileUrl, fileType: routeFileType, title, bookId } = route.params;
     const insets = useSafeAreaInsets();
     
     const [loading, setLoading] = useState(true);
@@ -20,11 +37,78 @@ const ReaderScreen = ({ route, navigation }: any) => {
     const [isImmersive, setIsImmersive] = useState(false);
     const [isBookmarked, setIsBookmarked] = useState(false);
     const [fontSize, setFontSize] = useState(16);
+    const [lineHeight, setLineHeight] = useState(1.6);
     const [showControls, setShowControls] = useState(true);
+    const [showSettings, setShowSettings] = useState(false);
     
     const flipAnimation = useRef(new Animated.Value(0)).current;
     const pageX = useRef(0);
     const webViewRef = useRef<WebView>(null);
+    const scrollViewRef = useRef<ScrollView>(null);
+    const [textContent, setTextContent] = useState<string>('');
+    const [currentFileType, setCurrentFileType] = useState<BookFileType>('pdf');
+    const [fileUrlState, setFileUrlState] = useState<string>('');
+
+    // Determine file type and URL
+    useEffect(() => {
+        if (book) {
+            const type = routeFileType || getBookFileType(book);
+            const url = fileUrl || pdfUrl || getBookFileUrl(book);
+            setCurrentFileType(type);
+            setFileUrlState(url);
+        } else if (pdfUrl) {
+            setCurrentFileType('pdf');
+            setFileUrlState(pdfUrl);
+        } else if (fileUrl) {
+            setCurrentFileType(routeFileType || 'pdf');
+            setFileUrlState(fileUrl);
+        }
+    }, [book, pdfUrl, fileUrl, routeFileType]);
+
+    // Load bookmarks and reading progress
+    useEffect(() => {
+        loadBookmark();
+        loadProgress();
+    }, [bookId]);
+
+    const loadBookmark = async () => {
+        try {
+            const bookmarks = await AsyncStorage.getItem(`bookmarks_${bookId}`);
+            setIsBookmarked(bookmarks === 'true');
+        } catch (e) {
+            console.error('Load bookmark error:', e);
+        }
+    };
+
+    const loadProgress = async () => {
+        try {
+            const progress = await AsyncStorage.getItem(`progress_${bookId}`);
+            if (progress) {
+                const { page } = JSON.parse(progress);
+                setCurrentPage(page || 1);
+            }
+        } catch (e) {
+            console.error('Load progress error:', e);
+        }
+    };
+
+    const saveProgress = async (page: number) => {
+        try {
+            await AsyncStorage.setItem(`progress_${bookId}`, JSON.stringify({ page, timestamp: Date.now() }));
+        } catch (e) {
+            console.error('Save progress error:', e);
+        }
+    };
+
+    const toggleBookmark = async () => {
+        const newValue = !isBookmarked;
+        setIsBookmarked(newValue);
+        try {
+            await AsyncStorage.setItem(`bookmarks_${bookId}`, String(newValue));
+        } catch (e) {
+            console.error('Save bookmark error:', e);
+        }
+    };
 
     const themeColors = {
         paper: { bg: '#F8FAFC', text: '#1E293B', page: '#FFFFFF', shadow: '#E2E8F0' },
@@ -32,8 +116,34 @@ const ReaderScreen = ({ route, navigation }: any) => {
         dark: { bg: '#0F172A', text: '#F8FAFC', page: '#1E293B', shadow: '#334155' }
     };
 
-    // PDF.js HTML with page-by-page rendering
-    const pdfViewerHTML = `
+    // Load TXT file content
+    useEffect(() => {
+        if (currentFileType === 'txt' && fileUrlState) {
+            loadTextFile();
+        }
+    }, [currentFileType, fileUrlState]);
+
+    const loadTextFile = async () => {
+        try {
+            setLoading(true);
+            const response = await fetch(fileUrlState);
+            const text = await response.text();
+            setTextContent(text);
+            
+            // Estimate pages (assuming ~500 words per page)
+            const words = text.split(/\s+/).length;
+            const estimatedPages = Math.max(1, Math.ceil(words / 500));
+            setTotalPages(estimatedPages);
+            setLoading(false);
+        } catch (error: any) {
+            console.error('Load text error:', error);
+            Alert.alert('Xatolik', 'Kitob yuklanmadi');
+            setLoading(false);
+        }
+    };
+
+    // PDF.js HTML with enhanced features
+    const getPdfViewerHTML = () => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -45,6 +155,7 @@ const ReaderScreen = ({ route, navigation }: any) => {
             background-color: ${themeColors[theme].bg};
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         #pdf-container {
             display: flex;
@@ -129,7 +240,7 @@ const ReaderScreen = ({ route, navigation }: any) => {
         }
         
         function loadPDF() {
-            fetch('${pdfUrl}')
+            fetch('${fileUrlState}')
                 .then(response => response.arrayBuffer())
                 .then(data => {
                     pdfjsLib.getDocument({ data: data }).promise.then(function(pdf) {
@@ -156,7 +267,6 @@ const ReaderScreen = ({ route, navigation }: any) => {
         
         window.addEventListener('load', loadPDF);
         
-        // Handle scroll to track current page
         let scrollTimeout;
         window.addEventListener('scroll', function() {
             clearTimeout(scrollTimeout);
@@ -183,6 +293,191 @@ const ReaderScreen = ({ route, navigation }: any) => {
 </html>
     `;
 
+    // EPUB.js HTML viewer - Using a more compatible approach
+    const getEpubViewerHTML = () => `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: ${themeColors[theme].bg};
+            color: ${themeColors[theme].text};
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, serif;
+            font-size: ${fontSize}px;
+            line-height: ${lineHeight};
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        #book-container {
+            max-width: ${PAGE_WIDTH}px;
+            margin: 0 auto;
+            padding: 20px;
+            background: ${themeColors[theme].page};
+            min-height: 100vh;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        #viewer {
+            width: 100%;
+            min-height: 80vh;
+        }
+        #viewer iframe {
+            width: 100%;
+            min-height: 80vh;
+            border: none;
+        }
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: ${themeColors[theme].text};
+        }
+    </style>
+</head>
+<body>
+    <div id="book-container">
+        <div id="viewer"></div>
+    </div>
+    <script>
+        let book = null;
+        let rendition = null;
+        let currentLocation = null;
+        let totalSpineLength = 0;
+        
+        function initEpub() {
+            try {
+                book = ePub('${fileUrlState}');
+                
+                book.ready.then(function() {
+                    totalSpineLength = book.spine.length || 1;
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'loaded',
+                        totalPages: totalSpineLength
+                    }));
+                });
+                
+                rendition = book.renderTo('viewer', {
+                    width: '100%',
+                    height: '100%',
+                    spread: 'none',
+                    flow: 'paginated'
+                });
+                
+                rendition.display().then(function() {
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'loaded',
+                        totalPages: totalSpineLength
+                    }));
+                });
+                
+                rendition.on('relocated', function(location) {
+                    currentLocation = location;
+                    const cfi = location.start.cfi;
+                    const spineItem = book.spine.get(location.start.index);
+                    const pageNum = location.start.index + 1;
+                    
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'pageChange',
+                        page: pageNum
+                    }));
+                });
+                
+                rendition.on('rendered', function(section) {
+                    // Apply theme colors to rendered content
+                    const iframe = document.getElementById('viewer').querySelector('iframe');
+                    if (iframe && iframe.contentDocument) {
+                        const style = iframe.contentDocument.createElement('style');
+                        style.textContent = \`
+                            body {
+                                background-color: ${themeColors[theme].page} !important;
+                                color: ${themeColors[theme].text} !important;
+                                font-size: ${fontSize}px !important;
+                                line-height: ${lineHeight} !important;
+                            }
+                        \`;
+                        iframe.contentDocument.head.appendChild(style);
+                    }
+                });
+            } catch (error) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'error',
+                    message: error.message || 'EPUB yuklanmadi'
+                }));
+            }
+        }
+        
+        function nextPage() {
+            if (rendition) {
+                rendition.next();
+            }
+        }
+        
+        function prevPage() {
+            if (rendition) {
+                rendition.prev();
+            }
+        }
+        
+        function goToPage(page) {
+            if (book && book.spine && rendition) {
+                const index = Math.max(0, Math.min(page - 1, book.spine.length - 1));
+                const spineItem = book.spine.get(index);
+                if (spineItem) {
+                    rendition.display(spineItem.href);
+                }
+            }
+        }
+        
+        window.addEventListener('load', function() {
+            setTimeout(initEpub, 100);
+        });
+    </script>
+</body>
+</html>
+    `;
+
+    // TXT Reader Component
+    const renderTextReader = () => {
+        const words = textContent.split(/\s+/);
+        const wordsPerPage = Math.floor((SCREEN_WIDTH - 80) * (SCREEN_WIDTH - 80) / (fontSize * fontSize * lineHeight * 0.5));
+        const startIndex = (currentPage - 1) * wordsPerPage;
+        const endIndex = startIndex + wordsPerPage;
+        const pageText = words.slice(startIndex, endIndex).join(' ');
+
+        return (
+            <ScrollView
+                ref={scrollViewRef}
+                style={{ flex: 1, backgroundColor: themeColors[theme].bg }}
+                contentContainerStyle={{ padding: 20 }}
+                showsVerticalScrollIndicator={false}
+            >
+                <View style={{
+                    backgroundColor: themeColors[theme].page,
+                    padding: 24,
+                    borderRadius: 8,
+                    minHeight: SCREEN_WIDTH - 200,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 4,
+                }}>
+                    <Text style={{
+                        color: themeColors[theme].text,
+                        fontSize: fontSize,
+                        lineHeight: fontSize * lineHeight,
+                        fontFamily: 'serif',
+                        textAlign: 'left',
+                    }}>
+                        {pageText || textContent}
+                    </Text>
+                </View>
+            </ScrollView>
+        );
+    };
+
     const panResponder = useRef(
         PanResponder.create({
             onStartShouldSetPanResponder: () => true,
@@ -206,8 +501,8 @@ const ReaderScreen = ({ route, navigation }: any) => {
     const goToPage = (page: number) => {
         if (page < 1 || page > totalPages) return;
         setCurrentPage(page);
+        saveProgress(page);
         
-        // Animate page flip
         Animated.sequence([
             Animated.timing(flipAnimation, {
                 toValue: 1,
@@ -221,24 +516,25 @@ const ReaderScreen = ({ route, navigation }: any) => {
             }),
         ]).start();
 
-        // Scroll to page in WebView
-        webViewRef.current?.injectJavaScript(`
-            scrollToPage(${page});
-            true;
-        `);
+        if (currentFileType === 'pdf' && webViewRef.current) {
+            webViewRef.current.injectJavaScript(`scrollToPage(${page}); true;`);
+        } else if (currentFileType === 'epub' && webViewRef.current) {
+            webViewRef.current.injectJavaScript(`goToPage(${page}); true;`);
+        }
     };
 
     const handleWebViewMessage = (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
             if (data.type === 'loaded') {
-                setTotalPages(data.totalPages);
+                setTotalPages(data.totalPages || 1);
                 setLoading(false);
             } else if (data.type === 'pageChange') {
                 setCurrentPage(data.page);
+                saveProgress(data.page);
             } else if (data.type === 'error') {
                 setLoading(false);
-                console.error('PDF Error:', data.message);
+                Alert.alert('Xatolik', data.message || 'Kitob yuklanmadi');
             }
         } catch (e) {
             console.error('Parse error:', e);
@@ -264,6 +560,16 @@ const ReaderScreen = ({ route, navigation }: any) => {
         inputRange: [0, 1],
         outputRange: ['0deg', '180deg'],
     });
+
+    const adjustFontSize = (delta: number) => {
+        const newSize = Math.max(12, Math.min(24, fontSize + delta));
+        setFontSize(newSize);
+    };
+
+    const adjustLineHeight = (delta: number) => {
+        const newHeight = Math.max(1.2, Math.min(2.5, lineHeight + delta));
+        setLineHeight(newHeight);
+    };
 
     return (
         <View className="flex-1" style={{ backgroundColor: themeColors[theme].bg }} {...panResponder.panHandlers}>
@@ -297,7 +603,7 @@ const ReaderScreen = ({ route, navigation }: any) => {
                         )}
                     </View>
 
-                    <TouchableOpacity onPress={() => setIsBookmarked(!isBookmarked)} className="p-2 mr-2">
+                    <TouchableOpacity onPress={toggleBookmark} className="p-2 mr-2">
                         {isBookmarked ? (
                             <BookmarkCheck color={themeColors[theme].text} size={22} fill={themeColors[theme].text} />
                         ) : (
@@ -305,39 +611,39 @@ const ReaderScreen = ({ route, navigation }: any) => {
                         )}
                     </TouchableOpacity>
 
-                    <TouchableOpacity onPress={toggleImmersive} className="p-2">
-                        {isImmersive ? (
-                            <Maximize color={themeColors[theme].text} size={20} />
-                        ) : (
-                            <Settings2 color={themeColors[theme].text} size={20} />
-                        )}
+                    <TouchableOpacity onPress={() => setShowSettings(!showSettings)} className="p-2">
+                        <Settings2 color={themeColors[theme].text} size={20} />
                     </TouchableOpacity>
                 </View>
             </Animated.View>
 
-            {/* PDF Viewer */}
+            {/* Reader Content */}
             <View className="flex-1" style={{ marginTop: insets.top + 70 }}>
-                <Animated.View
-                    style={{
-                        flex: 1,
-                        transform: [{ rotateY: flipRotation }],
-                    }}
-                >
-                    <WebView
-                        ref={webViewRef}
-                        source={{ html: pdfViewerHTML }}
-                        onMessage={handleWebViewMessage}
-                        javaScriptEnabled={true}
-                        domStorageEnabled={true}
-                        style={{ 
-                            flex: 1, 
-                            backgroundColor: themeColors[theme].bg,
-                            opacity: loading ? 0 : 1,
+                {currentFileType === 'txt' ? (
+                    renderTextReader()
+                ) : (
+                    <Animated.View
+                        style={{
+                            flex: 1,
+                            transform: [{ rotateY: flipRotation }],
                         }}
-                        scrollEnabled={true}
-                        showsVerticalScrollIndicator={false}
-                    />
-                </Animated.View>
+                    >
+                        <WebView
+                            ref={webViewRef}
+                            source={{ html: currentFileType === 'epub' ? getEpubViewerHTML() : getPdfViewerHTML() }}
+                            onMessage={handleWebViewMessage}
+                            javaScriptEnabled={true}
+                            domStorageEnabled={true}
+                            style={{ 
+                                flex: 1, 
+                                backgroundColor: themeColors[theme].bg,
+                                opacity: loading ? 0 : 1,
+                            }}
+                            scrollEnabled={true}
+                            showsVerticalScrollIndicator={false}
+                        />
+                    </Animated.View>
+                )}
             </View>
 
             {/* Loading */}
@@ -350,8 +656,91 @@ const ReaderScreen = ({ route, navigation }: any) => {
                 </View>
             )}
 
+            {/* Settings Panel */}
+            {showSettings && (
+                <Animated.View
+                    className="absolute bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800"
+                    style={{
+                        paddingBottom: insets.bottom + 20,
+                        paddingTop: 20,
+                        paddingHorizontal: 20,
+                    }}
+                >
+                    <View className="mb-4">
+                        <Text className="text-sm font-bold mb-3" style={{ color: themeColors[theme].text }}>
+                            Shrift o'lchami
+                        </Text>
+                        <View className="flex-row items-center justify-between">
+                            <TouchableOpacity onPress={() => adjustFontSize(-2)} className="p-2">
+                                <Minus color={themeColors[theme].text} size={20} />
+                            </TouchableOpacity>
+                            <Text style={{ color: themeColors[theme].text, fontSize: 16 }}>{fontSize}px</Text>
+                            <TouchableOpacity onPress={() => adjustFontSize(2)} className="p-2">
+                                <Plus color={themeColors[theme].text} size={20} />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {currentFileType === 'txt' && (
+                        <View className="mb-4">
+                            <Text className="text-sm font-bold mb-3" style={{ color: themeColors[theme].text }}>
+                                Qatorlar orasidagi masofa
+                            </Text>
+                            <View className="flex-row items-center justify-between">
+                                <TouchableOpacity onPress={() => adjustLineHeight(-0.1)} className="p-2">
+                                    <Minus color={themeColors[theme].text} size={20} />
+                                </TouchableOpacity>
+                                <Text style={{ color: themeColors[theme].text, fontSize: 16 }}>{lineHeight.toFixed(1)}</Text>
+                                <TouchableOpacity onPress={() => adjustLineHeight(0.1)} className="p-2">
+                                    <Plus color={themeColors[theme].text} size={20} />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
+
+                    <View className="mb-4">
+                        <Text className="text-sm font-bold mb-3" style={{ color: themeColors[theme].text }}>
+                            Mavzu
+                        </Text>
+                        <View className="flex-row items-center space-x-2">
+                            <TouchableOpacity
+                                onPress={() => setTheme('paper')}
+                                className={`px-4 py-2 rounded ${theme === 'paper' ? 'bg-slate-200' : 'bg-slate-100'}`}
+                            >
+                                <Text className={`text-xs font-bold ${theme === 'paper' ? 'text-slate-900' : 'text-slate-500'}`}>
+                                    Paper
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => setTheme('sepia')}
+                                className={`px-4 py-2 rounded ${theme === 'sepia' ? 'bg-slate-200' : 'bg-slate-100'}`}
+                            >
+                                <Text className={`text-xs font-bold ${theme === 'sepia' ? 'text-slate-900' : 'text-slate-500'}`}>
+                                    Sepia
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => setTheme('dark')}
+                                className={`px-4 py-2 rounded ${theme === 'dark' ? 'bg-slate-200' : 'bg-slate-100'}`}
+                            >
+                                <Text className={`text-xs font-bold ${theme === 'dark' ? 'text-slate-900' : 'text-slate-500'}`}>
+                                    Dark
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    <TouchableOpacity
+                        onPress={() => setShowSettings(false)}
+                        className="bg-primary p-3 rounded-lg items-center mt-2"
+                    >
+                        <Text className="text-white font-bold">Yopish</Text>
+                    </TouchableOpacity>
+                </Animated.View>
+            )}
+
             {/* Bottom Controls */}
-            {showControls && !isImmersive && (
+            {showControls && !showSettings && !isImmersive && (
                 <Animated.View
                     className="absolute bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800"
                     style={{
@@ -393,36 +782,6 @@ const ReaderScreen = ({ route, navigation }: any) => {
                         >
                             <ChevronRight color={themeColors[theme].text} size={24} />
                         </TouchableOpacity>
-                    </View>
-
-                    {/* Theme & Settings */}
-                    <View className="flex-row items-center justify-center space-x-4 px-4">
-                        <View className="flex-row items-center space-x-2 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
-                            <TouchableOpacity
-                                onPress={() => setTheme('paper')}
-                                className={`px-4 py-2 rounded ${theme === 'paper' ? 'bg-white dark:bg-slate-700 shadow-sm' : ''}`}
-                            >
-                                <Text className={`text-xs font-bold ${theme === 'paper' ? 'text-slate-900 dark:text-white' : 'text-slate-500'}`}>
-                                    Paper
-                                </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                onPress={() => setTheme('sepia')}
-                                className={`px-4 py-2 rounded ${theme === 'sepia' ? 'bg-white dark:bg-slate-700 shadow-sm' : ''}`}
-                            >
-                                <Text className={`text-xs font-bold ${theme === 'sepia' ? 'text-slate-900 dark:text-white' : 'text-slate-500'}`}>
-                                    Sepia
-                                </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                onPress={() => setTheme('dark')}
-                                className={`px-4 py-2 rounded ${theme === 'dark' ? 'bg-white dark:bg-slate-700 shadow-sm' : ''}`}
-                            >
-                                <Text className={`text-xs font-bold ${theme === 'dark' ? 'text-slate-900 dark:text-white' : 'text-slate-500'}`}>
-                                    Dark
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
                     </View>
                 </Animated.View>
             )}

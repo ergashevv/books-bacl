@@ -28,7 +28,7 @@ bot.start(async (ctx) => {
     const telegramUser = ctx.from;
 
     if (!startPayload) {
-        return ctx.reply('👋 Welcome! Please open the app and click "Login with Telegram" to start.');
+        return ctx.reply('👋 Xush kelibsiz! Ilovani oching va "Telegram orqali kirish" tugmasini bosing.');
     }
 
     console.log(`📥 Login request: ${startPayload} from ${telegramUser.first_name} (${telegramUser.id})`);
@@ -45,7 +45,7 @@ bot.start(async (ctx) => {
 
         if (requestResult.rows.length === 0) {
             console.log('❌ No valid request found');
-            return ctx.reply('❌ Invalid or expired login request. Please try again from the app.');
+            return ctx.reply('❌ Yaroqsiz yoki muddati o\'tgan login so\'rovi. Iltimos, ilovadan qayta urinib ko\'ring.');
         }
 
         console.log('✅ Auth request validated');
@@ -90,9 +90,15 @@ bot.start(async (ctx) => {
 
         // Check if phone number is missing
         if (!userPhone) {
-            return ctx.reply('👋 Hello! To continue, please share your phone number using the button below:', {
+            // Store the request_uuid in user's session context for later use
+            await client.query(
+                `UPDATE auth_requests SET telegram_user_id = $1, user_id = $2 WHERE request_uuid = $3`,
+                [telegramId, userId, startPayload]
+            );
+            
+            return ctx.reply('👋 Salom! Davom etish uchun telefon raqamingizni ulashing:', {
                 reply_markup: {
-                    keyboard: [[{ text: '📱 Share Phone Number', request_contact: true }]],
+                    keyboard: [[{ text: '📱 Telefon raqamini ulashish', request_contact: true }]],
                     resize_keyboard: true,
                     one_time_keyboard: true
                 }
@@ -108,13 +114,13 @@ bot.start(async (ctx) => {
         );
 
         console.log(`✅ Login successful for user ${userId}`);
-        ctx.reply(`✅ Successfully logged in as ${telegramUser.first_name}! You can return to the app now.`, {
+        ctx.reply(`✅ Muvaffaqiyatli kirildi, ${telegramUser.first_name}! Endi ilovaga qaytishingiz mumkin.`, {
             reply_markup: { remove_keyboard: true }
         });
 
     } catch (e) {
         console.error('❌ Error:', e);
-        ctx.reply('❌ An error occurred.');
+        ctx.reply('❌ Xatolik yuz berdi. Iltimos, qayta urinib ko\'ring.');
     } finally {
         await client.end();
     }
@@ -126,34 +132,95 @@ bot.on('contact', async (ctx) => {
     const telegramId = ctx.from.id.toString();
 
     if (contact.user_id !== ctx.from.id) {
-        return ctx.reply('❌ Please share your own contact.');
+        return ctx.reply('❌ Iltimos, o\'z kontaktingizni ulashing.');
     }
 
     console.log(`📱 Received phone number for ${telegramId}: ${contact.phone_number}`);
 
     const client = await getDbClient();
     try {
+        // Update phone number
         await client.query(
             `UPDATE users SET phone = $1 WHERE telegram_id = $2`,
             [contact.phone_number, telegramId]
         );
-        ctx.reply(`✅ Thank you! Your phone number (${contact.phone_number}) has been saved. You can now login from the app.`);
+
+        // Find pending auth request for this user
+        const authRequestResult = await client.query(
+            `SELECT * FROM auth_requests 
+             WHERE telegram_user_id = $1 AND status = 'pending' 
+             ORDER BY created_at DESC 
+             LIMIT 1`,
+            [telegramId]
+        );
+
+        if (authRequestResult.rows.length > 0) {
+            const requestUuid = authRequestResult.rows[0].request_uuid;
+            
+            // Get user ID
+            const userResult = await client.query(
+                `SELECT id FROM users WHERE telegram_id = $1`,
+                [telegramId]
+            );
+
+            if (userResult.rows.length > 0) {
+                const userId = userResult.rows[0].id;
+                
+                // Complete the auth request
+                await client.query(
+                    `UPDATE auth_requests 
+                     SET status = 'completed', user_id = $1 
+                     WHERE request_uuid = $2`,
+                    [userId, requestUuid]
+                );
+
+                console.log(`✅ Auth request completed after phone number save`);
+                ctx.reply(`✅ Rahmat! Telefon raqamingiz (${contact.phone_number}) saqlandi. Endi ilovadan login qilishingiz mumkin.`, {
+                    reply_markup: { remove_keyboard: true }
+                });
+            } else {
+                ctx.reply(`✅ Rahmat! Telefon raqamingiz (${contact.phone_number}) saqlandi.`, {
+                    reply_markup: { remove_keyboard: true }
+                });
+            }
+        } else {
+            ctx.reply(`✅ Rahmat! Telefon raqamingiz (${contact.phone_number}) saqlandi.`, {
+                reply_markup: { remove_keyboard: true }
+            });
+        }
     } catch (e) {
         console.error('❌ Update phone error:', e);
-        ctx.reply('❌ Failed to save phone number.');
+        ctx.reply('❌ Telefon raqamini saqlashda xatolik yuz berdi.');
     } finally {
         await client.end();
     }
 });
 
+// Error handling
+bot.catch((err, ctx) => {
+    console.error('❌ Bot error:', err);
+    ctx.reply('❌ Xatolik yuz berdi. Iltimos, qayta urinib ko\'ring.');
+});
+
 bot.launch()
     .then(() => {
-        console.log('🤖 Bot is running!');
+        console.log('✅ Bot is running successfully!');
+        console.log('📱 Bot is ready to handle login requests');
     })
     .catch((error) => {
         console.error('❌ Failed to launch bot:', error);
         process.exit(1);
     });
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+// Graceful shutdown
+process.once('SIGINT', () => {
+    console.log('🛑 Shutting down bot...');
+    bot.stop('SIGINT');
+    process.exit(0);
+});
+
+process.once('SIGTERM', () => {
+    console.log('🛑 Shutting down bot...');
+    bot.stop('SIGTERM');
+    process.exit(0);
+});

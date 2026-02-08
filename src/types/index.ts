@@ -14,6 +14,11 @@ export type Book = {
     description?: string;
     cover_url?: string;
     pdf_path?: string;
+    epub_path?: string;
+    txt_path?: string;
+    mobi_path?: string;
+    file_type?: 'pdf' | 'epub' | 'txt' | 'mobi';
+    file_path?: string; // Generic file path (fallback)
     language?: string;
     is_premium: boolean;
     price?: number;
