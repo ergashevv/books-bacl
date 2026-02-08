@@ -4,7 +4,9 @@
   "scripts": {
     "start": "expo start",
     "start:expo": "expo start",
+    "build:server": "tsc --project tsconfig.server.json",
     "start:api": "NODE_OPTIONS='--max-old-space-size=300' node --loader tsx server/api.ts",
+    "start:api:prod": "cd server && npm start",
     "start:api:ts-node": "NODE_OPTIONS='--max-old-space-size=256' ts-node --transpile-only server/api.ts",
     "start:bot": "ts-node scripts/telegram_bot.ts",
     "reset-project": "node ./scripts/reset-project.js",

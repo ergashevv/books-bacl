@@ -1,0 +1,25 @@
+{
+  "name": "books-server",
+  "version": "1.0.0",
+  "description": "Backend server for books app",
+  "main": "dist/api.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "NODE_OPTIONS='--max-old-space-size=300 --no-warnings' node dist/api.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "multer": "^2.0.2",
+    "pg": "^8.18.0",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.0.0",
+    "@types/pg": "^8.16.0",
+    "typescript": "~5.9.2"
+  }
+}

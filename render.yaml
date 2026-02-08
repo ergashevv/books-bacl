@@ -3,8 +3,8 @@ services:
     name: books-backend
     env: node
     plan: free
-    buildCommand: npm install --production=false
-    startCommand: NODE_OPTIONS='--max-old-space-size=300 --no-warnings' npm run start:api
+    buildCommand: npm install typescript --save-dev && npm run build:server && cd server && npm install --omit=dev --no-audit --no-fund
+    startCommand: cd server && npm start
     envVars:
       - key: NODE_VERSION
         value: 22.22.0
