@@ -1,6 +1,6 @@
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ChevronLeft, Save } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Layout from '../../components/Layout';
 import { useBookStore } from '../../store/useBookStore';
@@ -8,8 +8,14 @@ import { useBookStore } from '../../store/useBookStore';
 const AdminBookFormScreen = () => {
     const navigation = useNavigation();
     const route = useRoute<any>();
-    const { addBook, updateBook, categories } = useBookStore();
+    const { addBook, updateBook, categories, fetchCategories } = useBookStore();
     const editingBook = route.params?.book;
+
+    useEffect(() => {
+        if (categories.length === 0) {
+            fetchCategories();
+        }
+    }, [categories.length, fetchCategories]);
 
     const [loading, setLoading] = useState(false);
     const [form, setForm] = useState({

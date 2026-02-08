@@ -1,10 +1,8 @@
 import { ChevronLeft, Maximize, Settings2 } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { ActivityIndicator, Animated, Dimensions, StatusBar, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
-
-const { width } = Dimensions.get('window');
 
 const ReaderScreen = ({ route, navigation }: any) => {
     const { pdfUrl, title } = route.params;
@@ -97,7 +95,7 @@ const ReaderScreen = ({ route, navigation }: any) => {
             <View className="flex-1">
                 <WebView
                     source={{
-                        uri: pdfUrl.includes('localhost') || pdfUrl.includes('192.168.') || pdfUrl.startsWith('/')
+                        uri: pdfUrl.includes('localhost') || pdfUrl.includes('192.168.') || pdfUrl.includes('onrender.com') || pdfUrl.startsWith('/')
                             ? pdfUrl
                             : `https://docs.google.com/viewer?url=${encodeURIComponent(pdfUrl)}&embedded=true`
                     }}

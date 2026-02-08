@@ -23,13 +23,6 @@ const BookForm = () => {
         category_id: 1,
     });
 
-    useEffect(() => {
-        loadCategories();
-        if (isEditing) {
-            loadBook();
-        }
-    }, [id]);
-
     const loadCategories = async () => {
         try {
             const res = await bookApi.getCategories();
@@ -62,6 +55,14 @@ const BookForm = () => {
             navigate('/');
         }
     };
+
+    useEffect(() => {
+        loadCategories();
+        if (isEditing && id) {
+            loadBook();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [id, isEditing]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

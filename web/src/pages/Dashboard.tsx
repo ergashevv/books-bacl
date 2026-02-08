@@ -2,16 +2,32 @@ import { BarChart3, BookOpen, Edit2, Layers, Plus, Search, Trash2, Users } from 
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { bookApi } from '../api/client';
+import { getImageUrl } from '../utils/api';
 
 const Dashboard = () => {
     const [books, setBooks] = useState<any[]>([]);
+    const [categories, setCategories] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const navigate = useNavigate();
 
     useEffect(() => {
-        loadBooks();
+        loadCategories();
     }, []);
+
+    const loadCategories = async () => {
+        try {
+            const res = await bookApi.getCategories();
+            setCategories(res.data);
+        } catch (error) {
+            console.error('Failed to load categories', error);
+        }
+    };
+
+    const getCategoryName = (categoryId: number) => {
+        const category = categories.find(c => c.id === categoryId);
+        return category?.name || 'Unknown';
+    };
 
     const loadBooks = async () => {
         try {
@@ -24,6 +40,10 @@ const Dashboard = () => {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        loadBooks();
+    }, [search]);
 
     const handleDelete = async (id: number, title: string) => {
         if (window.confirm(`Are you sure you want to delete "${title}"?`)) {
@@ -42,7 +62,7 @@ const Dashboard = () => {
                 {/* Stats Section */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                     <StatCard icon={<BookOpen className="text-primary" />} label="Total Books" value={books.length.toString()} />
-                    <StatCard icon={<Layers className="text-blue-500" />} label="Categories" value="8" />
+                    <StatCard icon={<Layers className="text-blue-500" />} label="Categories" value={categories.length.toString()} />
                     <StatCard icon={<Users className="text-purple-500" />} label="Total Users" value="1.2k" />
                     <StatCard icon={<BarChart3 className="text-amber-500" />} label="Total Reads" value="45.6k" />
                 </div>
@@ -92,7 +112,7 @@ const Dashboard = () => {
                             {books.map((book) => (
                                 <tr key={book.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors">
                                     <td className="px-6 py-4 flex justify-center">
-                                        <img src={book.cover_url} className="w-10 h-14 rounded object-cover shadow-sm" alt="" />
+                                        <img src={getImageUrl(book.cover_url)} className="w-10 h-14 rounded object-cover shadow-sm" alt="" />
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="font-bold text-slate-900 dark:text-white">{book.title}</div>
@@ -101,7 +121,7 @@ const Dashboard = () => {
                                     <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">{book.author}</td>
                                     <td className="px-6 py-4">
                                         <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-3 py-1 rounded-full text-xs font-bold">
-                                            Classic
+                                            {getCategoryName(book.category_id)}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">

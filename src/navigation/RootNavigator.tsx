@@ -96,7 +96,7 @@ export default function RootNavigator() {
 
     useEffect(() => {
         checkSession();
-    }, []);
+    }, [checkSession]);
 
     if (loading) {
         return (

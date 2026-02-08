@@ -12,7 +12,7 @@ const AdminDashboardScreen = () => {
 
     useEffect(() => {
         fetchBooks();
-    }, []);
+    }, [fetchBooks]);
 
     const handleDelete = (id: number, title: string) => {
         Alert.alert(

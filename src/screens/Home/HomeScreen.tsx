@@ -18,11 +18,11 @@ const HomeScreen = () => {
 
     useEffect(() => {
         fetchCategories();
-    }, []);
+    }, [fetchCategories]);
 
     useEffect(() => {
         fetchBooks(selectedCategory || undefined, search || undefined);
-    }, [selectedCategory, search]);
+    }, [selectedCategory, search, fetchBooks]);
 
     const userName = session?.user?.full_name || 'Reader';
 

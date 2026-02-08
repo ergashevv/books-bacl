@@ -1,6 +1,6 @@
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { ChevronLeft, Heart } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Layout from '../../components/Layout';
@@ -19,21 +19,22 @@ const BookDetailScreen = () => {
     const insets = useSafeAreaInsets();
     const { bookId } = (route.params as any);
     const { getBookDetail, toggleFavorite, favorites, updateProgress } = useBookStore();
-    const { session } = useAuthStore();
 
     const [book, setBook] = useState<Book | null>(null);
     const [loading, setLoading] = useState(true);
 
     const isFavorite = favorites.includes(bookId);
 
-    useEffect(() => { loadData(); }, [bookId]);
-
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true);
         const data = await getBookDetail(bookId);
         if (data) setBook(data.book);
         setLoading(false);
-    };
+    }, [bookId, getBookDetail]);
+
+    useEffect(() => { 
+        loadData(); 
+    }, [loadData]);
 
     const handleRead = async () => {
         if (!book || !book.pdf_path) {

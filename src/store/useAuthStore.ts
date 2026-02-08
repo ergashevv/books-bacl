@@ -1,4 +1,3 @@
-import { Platform } from 'react-native';
 import { create } from 'zustand';
 import { storage } from '../utils/storage';
 

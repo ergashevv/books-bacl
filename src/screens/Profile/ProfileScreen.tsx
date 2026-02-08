@@ -19,7 +19,6 @@ import { useBookStore } from '../../store/useBookStore';
 const ProfileScreen = () => {
     const { session, signOut } = useAuthStore();
     const { favorites } = useBookStore();
-    const insets = useSafeAreaInsets();
     const navigation = useNavigation();
 
     const handleLogout = async () => {
@@ -34,7 +33,7 @@ const ProfileScreen = () => {
                     onPress: async () => {
                         try {
                             await signOut();
-                        } catch (error) {
+                        } catch {
                             Alert.alert("Error signing out");
                         }
                     }
