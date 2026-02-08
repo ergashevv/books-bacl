@@ -2,14 +2,14 @@ services:
   - type: web
     name: books-backend
     env: node
-    plan: free
-    buildCommand: cd server && NODE_OPTIONS='--max-old-space-size=250 --optimize-for-size --no-warnings' npm install --no-optional --no-audit --no-fund --prefer-offline --legacy-peer-deps --ignore-scripts && NODE_OPTIONS='--max-old-space-size=250 --optimize-for-size --no-warnings' npm run build && NODE_OPTIONS='--max-old-space-size=250 --optimize-for-size --no-warnings' npm prune --production --no-audit --no-fund
+    plan: standard
+    buildCommand: cd server && NODE_OPTIONS='--max-old-space-size=1500 --optimize-for-size --no-warnings' npm install --no-optional --no-audit --no-fund --prefer-offline --legacy-peer-deps --ignore-scripts && NODE_OPTIONS='--max-old-space-size=1500 --optimize-for-size --no-warnings' npm run build && NODE_OPTIONS='--max-old-space-size=1500 --optimize-for-size --no-warnings' npm prune --production --no-audit --no-fund
     startCommand: cd server && npm start
     envVars:
       - key: NODE_VERSION
         value: 22.22.0
       - key: NODE_OPTIONS
-        value: --max-old-space-size=350 --expose-gc --optimize-for-size --no-warnings
+        value: --max-old-space-size=1500 --expose-gc --optimize-for-size --no-warnings
       - key: DATABASE_URL
         fromDatabase:
           name: books_db # Agar Render-da DB bo'lsa, aks holda qo'lda kiriting
