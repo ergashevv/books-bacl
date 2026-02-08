@@ -22,6 +22,10 @@ export const bookApi = {
         client.delete(`/books/${id}`),
     getCategories: () =>
         client.get('/categories'),
+    createCategory: (name: string) =>
+        client.post('/categories', { name }),
+    deleteCategory: (id: number) =>
+        client.delete(`/categories/${id}`),
     uploadFile: (file: File, type: 'cover' | 'pdf') => {
         const formData = new FormData();
         formData.append('file', file);

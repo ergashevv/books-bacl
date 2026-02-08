@@ -457,6 +457,62 @@ app.get('/api/categories', async (req, res) => {
     }
 });
 
+// Create a new category
+app.post('/api/categories', async (req, res) => {
+    const { name } = req.body;
+    
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+        return res.status(400).json({ error: 'Category name is required' });
+    }
+    
+    if (name.length > 100) {
+        return res.status(400).json({ error: 'Category name must be less than 100 characters' });
+    }
+    
+    try {
+        const result = await query(
+            'INSERT INTO categories (name) VALUES ($1) RETURNING id, name',
+            [name.trim()]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (e: any) {
+        console.error('Category creation error:', e);
+        // Check for unique constraint violation
+        if (e.code === '23505') {
+            return res.status(400).json({ error: 'Category with this name already exists' });
+        }
+        res.status(500).json({ error: 'Failed to create category' });
+    }
+});
+
+// Delete a category
+app.delete('/api/categories/:id', async (req, res) => {
+    const { id } = req.params;
+    
+    if (!id || isNaN(Number(id))) {
+        return res.status(400).json({ error: 'Invalid category ID' });
+    }
+    
+    try {
+        // Check if category is used by any books
+        const booksCheck = await query('SELECT COUNT(*) FROM books WHERE category_id = $1', [id]);
+        if (booksCheck.rows[0].count > 0) {
+            return res.status(400).json({ 
+                error: `Cannot delete category. It is used by ${booksCheck.rows[0].count} book(s).` 
+            });
+        }
+        
+        const result = await query('DELETE FROM categories WHERE id = $1 RETURNING id', [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Category not found' });
+        }
+        res.json({ message: 'Category deleted successfully', id: result.rows[0].id });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Failed to delete category' });
+    }
+});
+
 // Initialize Telegram Bot (lazy load to save memory)
 let bot: Telegraf | null = null;
 

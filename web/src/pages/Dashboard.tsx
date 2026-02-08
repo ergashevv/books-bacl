@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, Edit2, Layers, Plus, Search, Trash2, Users } from 'lucide-react';
+import { BarChart3, BookOpen, Edit2, Layers, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { bookApi } from '../api/client';
@@ -9,6 +9,9 @@ const Dashboard = () => {
     const [categories, setCategories] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    const [showCategoryModal, setShowCategoryModal] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [categoryLoading, setCategoryLoading] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -56,6 +59,40 @@ const Dashboard = () => {
         }
     };
 
+    const handleCreateCategory = async () => {
+        if (!newCategoryName.trim()) {
+            alert('Iltimos, kategoriya nomini kiriting');
+            return;
+        }
+
+        setCategoryLoading(true);
+        try {
+            const res = await bookApi.createCategory(newCategoryName.trim());
+            setCategories([...categories, res.data]);
+            setNewCategoryName('');
+            setShowCategoryModal(false);
+            alert('Kategoriya muvaffaqiyatli yaratildi!');
+        } catch (error: any) {
+            const errorMessage = error?.response?.data?.error || 'Kategoriya yaratishda xatolik yuz berdi';
+            alert(errorMessage);
+        } finally {
+            setCategoryLoading(false);
+        }
+    };
+
+    const handleDeleteCategory = async (id: number, name: string) => {
+        if (window.confirm(`"${name}" kategoriyasini o'chirishni tasdiqlaysizmi?`)) {
+            try {
+                await bookApi.deleteCategory(id);
+                setCategories(categories.filter(c => c.id !== id));
+                alert('Kategoriya muvaffaqiyatli o\'chirildi!');
+            } catch (error: any) {
+                const errorMessage = error?.response?.data?.error || 'Kategoriya o\'chirishda xatolik yuz berdi';
+                alert(errorMessage);
+            }
+        }
+    };
+
     return (
         <div className="min-h-screen bg-background-light dark:bg-background-dark p-8">
             <div className="max-w-7xl mx-auto">
@@ -86,6 +123,12 @@ const Dashboard = () => {
                                 onKeyDown={(e) => e.key === 'Enter' && loadBooks()}
                             />
                         </div>
+                        <button
+                            onClick={() => setShowCategoryModal(true)}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-soft flex items-center gap-2"
+                        >
+                            <Layers size={20} /> Add Category
+                        </button>
                         <button
                             onClick={() => navigate('/add')}
                             className="bg-primary hover:bg-primary-hover text-white px-6 py-2 rounded-lg font-bold transition-all shadow-soft flex items-center gap-2"
@@ -158,7 +201,86 @@ const Dashboard = () => {
                         <div className="p-12 text-center text-slate-400">Kitoblar topilmadi.</div>
                     )}
                 </div>
+
+                {/* Categories Section */}
+                <div className="bg-white dark:bg-surface-dark rounded-lg shadow-soft p-6 mt-8">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-xl font-bold text-slate-900 dark:text-white">Categories</h2>
+                        <button
+                            onClick={() => setShowCategoryModal(true)}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2"
+                        >
+                            <Plus size={18} /> Add Category
+                        </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {categories.map((category) => (
+                            <div
+                                key={category.id}
+                                className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2"
+                            >
+                                <span>{category.name}</span>
+                                <button
+                                    onClick={() => handleDeleteCategory(category.id, category.name)}
+                                    className="text-rose-500 hover:text-rose-700 transition-colors"
+                                >
+                                    <X size={14} />
+                                </button>
+                            </div>
+                        ))}
+                        {categories.length === 0 && (
+                            <p className="text-slate-400 text-sm">Kategoriyalar yo'q</p>
+                        )}
+                    </div>
+                </div>
             </div>
+
+            {/* Category Modal */}
+            {showCategoryModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-surface-dark rounded-lg p-6 w-full max-w-md shadow-xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Yangi Kategoriya</h3>
+                            <button
+                                onClick={() => {
+                                    setShowCategoryModal(false);
+                                    setNewCategoryName('');
+                                }}
+                                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="Kategoriya nomi..."
+                            className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/20 mb-4"
+                            value={newCategoryName}
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleCreateCategory()}
+                            autoFocus
+                        />
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleCreateCategory}
+                                disabled={categoryLoading}
+                                className="flex-1 bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded-lg font-bold transition-all disabled:opacity-50"
+                            >
+                                {categoryLoading ? 'Yaratilmoqda...' : 'Yaratish'}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowCategoryModal(false);
+                                    setNewCategoryName('');
+                                }}
+                                className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+                            >
+                                Bekor qilish
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
