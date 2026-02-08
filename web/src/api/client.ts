@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:3001/api'; // Update if needed
+const API_URL = 'https://books-bacl-1.onrender.com/api';
 
 const client = axios.create({
     baseURL: API_URL,

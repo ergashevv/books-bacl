@@ -21,10 +21,8 @@ interface BookState {
     deleteBook: (id: number) => Promise<boolean>;
 }
 
-// API URL - use localhost for web, IP address for mobile
-const API_URL = Platform.OS === 'web'
-    ? 'http://localhost:3001'
-    : 'http://192.168.1.17:3001'; // Replace with your computer's IP
+// API URL - Render backend
+const API_URL = 'https://books-bacl-1.onrender.com';
 
 export const useBookStore = create<BookState>((set, get) => ({
     books: [],

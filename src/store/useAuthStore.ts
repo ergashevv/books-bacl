@@ -2,10 +2,8 @@ import { Platform } from 'react-native';
 import { create } from 'zustand';
 import { storage } from '../utils/storage';
 
-// API URL - use localhost for web, IP address for mobile
-const API_URL = Platform.OS === 'web'
-    ? 'http://localhost:3001'
-    : 'http://192.168.1.17:3001'; // Replace with your computer's IP
+// API URL - Render backend
+const API_URL = 'https://books-bacl-1.onrender.com';
 interface AppUser {
     id: number;
     telegram_id: string;

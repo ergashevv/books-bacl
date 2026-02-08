@@ -1,6 +1,5 @@
 // API manzilini shu yerdan o'zgartirish kifoya
-// Agar haqiqiy telefonda tekshirsangiz, localhost o'rniga kompyuter IP-sini yozing (masalan: 192.168.1.5)
-export const API_URL = 'http://localhost:3001';
+export const API_URL = 'https://books-bacl-1.onrender.com';
 
 export const getImageUrl = (path?: string) => {
     if (!path) return 'https://via.placeholder.com/150';
