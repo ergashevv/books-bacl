@@ -41,7 +41,11 @@ const BookDetailScreen = () => {
             return;
         }
         updateProgress(book.id, 1);
-        (navigation as any).navigate('Reader', { pdfUrl: getPdfUrl(book.pdf_path), title: book.title });
+        (navigation as any).navigate('Reader', { 
+            pdfUrl: getPdfUrl(book.pdf_path), 
+            title: book.title,
+            bookId: book.id 
+        });
     };
 
     if (loading) {
