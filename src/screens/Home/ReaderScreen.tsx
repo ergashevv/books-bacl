@@ -74,6 +74,7 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
         console.log('Setting file URL:', url, 'Type:', type);
         setCurrentFileType(type);
         setFileUrlState(url);
+        setLoading(true); // Reset loading state when URL changes
     }, [book, pdfUrl, fileUrl, routeFileType]);
 
     // Load bookmarks and reading progress
@@ -363,20 +364,36 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
         }
         
         // Wait for PDF.js to load before trying to load PDF
-        if (typeof pdfjsLib !== 'undefined') {
-            window.addEventListener('load', loadPDF);
+        function tryLoadPDF() {
+            if (typeof pdfjsLib !== 'undefined') {
+                console.log('PDF.js loaded, calling loadPDF()');
+                loadPDF();
+            } else {
+                console.log('PDF.js not loaded yet, retrying...');
+                // Retry after a delay if PDF.js hasn't loaded
+                setTimeout(function() {
+                    if (typeof pdfjsLib !== 'undefined') {
+                        console.log('PDF.js loaded on retry, calling loadPDF()');
+                        loadPDF();
+                    } else {
+                        console.error('PDF.js failed to load after retry');
+                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                            type: 'error',
+                            message: 'PDF.js library yuklanmadi. Internet aloqasini tekshiring.'
+                        }));
+                    }
+                }, 2000);
+            }
+        }
+        
+        // Try loading when page loads
+        window.addEventListener('load', tryLoadPDF);
+        
+        // Also try immediately if PDF.js is already loaded
+        if (document.readyState === 'complete') {
+            tryLoadPDF();
         } else {
-            // Retry after a delay if PDF.js hasn't loaded
-            setTimeout(function() {
-                if (typeof pdfjsLib !== 'undefined') {
-                    loadPDF();
-                } else {
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                        type: 'error',
-                        message: 'PDF.js library yuklanmadi. Internet aloqasini tekshiring.'
-                    }));
-                }
-            }, 2000);
+            document.addEventListener('DOMContentLoaded', tryLoadPDF);
         }
         
         let scrollTimeout;
@@ -770,6 +787,7 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
                     >
                     <WebView
                         ref={webViewRef}
+                        key={`${currentFileType}-${fileUrlState}`} // Force reload when URL changes
                         source={{ html: currentFileType === 'epub' ? getEpubViewerHTML() : getPdfViewerHTML() }}
                         onMessage={handleWebViewMessage}
                         javaScriptEnabled={true}
@@ -781,6 +799,13 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
                         }}
                         scrollEnabled={true}
                         showsVerticalScrollIndicator={false}
+                        startInLoadingState={true}
+                        renderLoading={() => (
+                            <View className="flex-1 justify-center items-center" style={{ backgroundColor: themeColors[theme].bg }}>
+                                <ActivityIndicator size="large" color="#34A853" />
+                                <Text className="mt-4" style={{ color: themeColors[theme].text }}>PDF yuklanmoqda...</Text>
+                            </View>
+                        )}
                         onError={(syntheticEvent) => {
                             const { nativeEvent } = syntheticEvent;
                             console.error('WebView error:', nativeEvent);
@@ -794,7 +819,40 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
                             Alert.alert('Xatolik', `HTTP xatolik: ${nativeEvent.statusCode}`);
                         }}
                         onLoadEnd={() => {
-                            console.log('WebView loaded');
+                            console.log('WebView loaded, injecting loadPDF call');
+                            // Inject JavaScript to trigger PDF loading after WebView is ready
+                            if (webViewRef.current && fileUrlState) {
+                                setTimeout(() => {
+                                    webViewRef.current?.injectJavaScript(`
+                                        console.log('Injected: Checking PDF.js and loading PDF...');
+                                        if (typeof pdfjsLib !== 'undefined') {
+                                            console.log('PDF.js is available, calling loadPDF()');
+                                            if (typeof loadPDF === 'function') {
+                                                loadPDF();
+                                            } else {
+                                                console.error('loadPDF function not found');
+                                                window.ReactNativeWebView.postMessage(JSON.stringify({
+                                                    type: 'error',
+                                                    message: 'loadPDF funksiyasi topilmadi'
+                                                }));
+                                            }
+                                        } else {
+                                            console.log('PDF.js not loaded yet, waiting...');
+                                            setTimeout(function() {
+                                                if (typeof pdfjsLib !== 'undefined' && typeof loadPDF === 'function') {
+                                                    loadPDF();
+                                                } else {
+                                                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                                                        type: 'error',
+                                                        message: 'PDF.js library yuklanmadi'
+                                                    }));
+                                                }
+                                            }, 1000);
+                                        }
+                                        true;
+                                    `);
+                                }, 500);
+                            }
                         }}
                     />
                     </Animated.View>
