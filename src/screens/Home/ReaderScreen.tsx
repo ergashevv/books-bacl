@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, Bookmark, BookmarkCheck, Settings2, Maximize, Minus, Plus, Type, AlignLeft } from 'lucide-react-native';
 import React, { useRef, useState, useEffect } from 'react';
-import { ActivityIndicator, Animated, Dimensions, PanResponder, StatusBar, Text, TouchableOpacity, View, ScrollView, Alert } from 'react-native';
+import { ActivityIndicator, Animated, Dimensions, PanResponder, StatusBar, Text, TouchableOpacity, View, ScrollView, Alert, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -155,7 +155,14 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
     };
 
     // PDF.js HTML with enhanced features
-    const getPdfViewerHTML = () => `
+    const getPdfViewerHTML = () => {
+        // Build full URL if needed
+        let pdfUrl = fileUrlState;
+        if (!pdfUrl.startsWith('http')) {
+            pdfUrl = `${API_URL}${pdfUrl.startsWith('/') ? '' : '/'}${pdfUrl}`;
+        }
+        console.log('Generating PDF viewer HTML with URL:', pdfUrl);
+        return `
 <!DOCTYPE html>
 <html>
 <head>
@@ -704,7 +711,7 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
         Animated.timing(headerVisible, {
             toValue: isImmersive ? 1 : 0,
             duration: 350,
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== 'web',
         }).start();
     };
 
