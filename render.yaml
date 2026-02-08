@@ -3,7 +3,7 @@ services:
     name: books-backend
     env: node
     plan: free
-    buildCommand: NODE_OPTIONS='--max-old-space-size=400 --optimize-for-size' npm install typescript --save-dev --no-audit --no-fund --prefer-offline --no-save && NODE_OPTIONS='--max-old-space-size=400 --optimize-for-size' npm run build:server && cd server && NODE_OPTIONS='--max-old-space-size=400 --optimize-for-size' npm install --omit=dev --no-audit --no-fund --prefer-offline --no-save
+    buildCommand: cd server && NODE_OPTIONS='--max-old-space-size=250 --optimize-for-size --no-warnings' npm install --no-optional --no-audit --no-fund --prefer-offline --legacy-peer-deps --ignore-scripts && NODE_OPTIONS='--max-old-space-size=250 --optimize-for-size --no-warnings' npm run build && NODE_OPTIONS='--max-old-space-size=250 --optimize-for-size --no-warnings' npm prune --production --no-audit --no-fund
     startCommand: cd server && npm start
     envVars:
       - key: NODE_VERSION

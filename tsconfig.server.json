@@ -12,8 +12,10 @@
     "resolveJsonModule": true,
     "moduleResolution": "node",
     "types": ["node"],
-    "incremental": true,
-    "tsBuildInfoFile": "./server/.tsbuildinfo"
+    "incremental": false,
+    "sourceMap": false,
+    "declaration": false,
+    "removeComments": true
   },
   "include": ["server/**/*"],
   "exclude": ["node_modules", "dist"]

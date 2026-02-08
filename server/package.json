@@ -5,6 +5,7 @@
   "main": "dist/api.js",
   "type": "commonjs",
   "scripts": {
+    "build": "NODE_OPTIONS='--max-old-space-size=280 --optimize-for-size' tsc --project ../tsconfig.server.json",
     "start": "NODE_OPTIONS='--max-old-space-size=350 --no-warnings --expose-gc --optimize-for-size' node dist/api.js"
   },
   "dependencies": {
