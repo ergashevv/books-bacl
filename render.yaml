@@ -4,7 +4,7 @@ services:
     env: node
     plan: free
     buildCommand: npm install --production=false
-    startCommand: NODE_OPTIONS='--max-old-space-size=400' npm run start:api
+    startCommand: NODE_OPTIONS='--max-old-space-size=300 --no-warnings' npm run start:api
     envVars:
       - key: NODE_VERSION
         value: 22.22.0
