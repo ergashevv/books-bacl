@@ -261,6 +261,16 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
         }
         
         function loadPDF() {
+            // Check if pdfjsLib is available
+            if (typeof pdfjsLib === 'undefined') {
+                console.error('PDF.js is not loaded!');
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'error',
+                    message: 'PDF.js library yuklanmadi. Qayta urinib ko\'ring.'
+                }));
+                return;
+            }
+            
             const pdfUrl = '${fileUrlState}';
             
             if (!pdfUrl || pdfUrl === '') {
@@ -272,63 +282,77 @@ const ReaderScreen = ({ route, navigation }: ReaderScreenProps) => {
             }
             
             console.log('Loading PDF from:', pdfUrl);
+            container.innerHTML = '<div class="loading">PDF yuklanmoqda...</div>';
             
-            console.log('Fetching PDF from:', pdfUrl);
-            
-            fetch(pdfUrl, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/pdf',
+            // Try direct PDF.js loading first (better for CORS)
+            pdfjsLib.getDocument({
+                url: pdfUrl,
+                httpHeaders: {
+                    'Accept': 'application/pdf'
                 },
-                mode: 'cors',
-                credentials: 'omit',
-                cache: 'no-cache'
-            })
-                .then(response => {
-                    console.log('PDF Response status:', response.status, response.statusText);
-                    console.log('PDF Response headers:', Object.fromEntries(response.headers.entries()));
-                    
-                    if (!response.ok) {
-                        throw new Error('PDF yuklanmadi: ' + response.status + ' ' + response.statusText + '. URL: ' + pdfUrl);
-                    }
-                    
-                    const contentType = response.headers.get('content-type');
-                    if (!contentType || !contentType.includes('pdf')) {
-                        console.warn('Warning: Content-Type is not PDF:', contentType);
-                    }
-                    
-                    return response.arrayBuffer();
+                withCredentials: false
+            }).promise.then(function(pdf) {
+                console.log('PDF loaded successfully, pages:', pdf.numPages);
+                pdfDoc = pdf;
+                currentPageNum = 1;
+                container.innerHTML = '';
+                renderPage(1);
+            }).catch(function(error) {
+                console.error('PDF.js direct load error:', error);
+                // Fallback to fetch + arrayBuffer
+                console.log('Trying fetch method...');
+                fetch(pdfUrl, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/pdf',
+                    },
+                    mode: 'cors',
+                    credentials: 'omit',
+                    cache: 'no-cache'
                 })
-                .then(data => {
-                    if (!data || data.byteLength === 0) {
-                        throw new Error('PDF fayli bo\'sh');
-                    }
-                    
-                    pdfjsLib.getDocument({ 
-                        data: data,
-                        httpHeaders: {
-                            'Accept': 'application/pdf'
+                    .then(response => {
+                        console.log('PDF Response status:', response.status, response.statusText);
+                        console.log('PDF Response headers:', Object.fromEntries(response.headers.entries()));
+                        
+                        if (!response.ok) {
+                            throw new Error('PDF yuklanmadi: ' + response.status + ' ' + response.statusText + '. URL: ' + pdfUrl);
                         }
-                    }).promise.then(function(pdf) {
+                        
+                        const contentType = response.headers.get('content-type');
+                        if (!contentType || !contentType.includes('pdf')) {
+                            console.warn('Warning: Content-Type is not PDF:', contentType);
+                        }
+                        
+                        return response.arrayBuffer();
+                    })
+                    .then(data => {
+                        if (!data || data.byteLength === 0) {
+                            throw new Error('PDF fayli bo\'sh');
+                        }
+                        
+                        console.log('PDF data received, size:', data.byteLength);
+                        return pdfjsLib.getDocument({ 
+                            data: data,
+                            httpHeaders: {
+                                'Accept': 'application/pdf'
+                            }
+                        }).promise;
+                    })
+                    .then(function(pdf) {
+                        console.log('PDF parsed successfully, pages:', pdf.numPages);
                         pdfDoc = pdf;
                         currentPageNum = 1;
                         container.innerHTML = '';
                         renderPage(1);
-                    }).catch(function(error) {
-                        console.error('PDF.js error:', error);
+                    })
+                    .catch(function(error) {
+                        console.error('PDF.js parse error:', error);
                         window.ReactNativeWebView.postMessage(JSON.stringify({
                             type: 'error',
-                            message: 'PDF parse qilishda xatolik: ' + error.message
+                            message: 'PDF yuklanmadi: ' + (error.message || 'Noma\'lum xatolik')
                         }));
                     });
-                })
-                .catch(error => {
-                    console.error('Fetch error:', error);
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                        type: 'error',
-                        message: error.message || 'PDF yuklanmadi'
-                    }));
-                });
+            });
         }
         
         function scrollToPage(pageNum) {
