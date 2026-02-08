@@ -9,7 +9,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "web-admin": "npm run dev --prefix web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "start-api": "ts-node server/api.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
