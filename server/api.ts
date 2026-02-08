@@ -327,6 +327,27 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 // Add a new book
 app.post('/api/books', async (req, res) => {
     const { title, author, description, cover_url, pdf_path, price, rating, is_premium, category_id } = req.body;
+    
+    // Validate required fields
+    if (!title || !author || !pdf_path) {
+        return res.status(400).json({ error: 'Title, author, and pdf_path are required' });
+    }
+    
+    // Validate category_id exists
+    if (category_id) {
+        try {
+            const categoryCheck = await query('SELECT id FROM categories WHERE id = $1', [category_id]);
+            if (categoryCheck.rows.length === 0) {
+                return res.status(400).json({ 
+                    error: `Category with id ${category_id} does not exist. Please select a valid category.` 
+                });
+            }
+        } catch (e) {
+            console.error('Category validation error:', e);
+            return res.status(500).json({ error: 'Failed to validate category' });
+        }
+    }
+    
     try {
         const result = await query(
             `INSERT INTO books (title, author, description, cover_url, pdf_path, price, rating, is_premium, category_id)
@@ -334,8 +355,14 @@ app.post('/api/books', async (req, res) => {
             [title, author, description, cover_url, pdf_path, price || 0, rating || 0, is_premium || false, category_id]
         );
         res.status(201).json(result.rows[0]);
-    } catch (e) {
-        console.error(e);
+    } catch (e: any) {
+        console.error('Book creation error:', e);
+        // Check for foreign key constraint violation
+        if (e.code === '23503') {
+            return res.status(400).json({ 
+                error: `Invalid category_id. The category does not exist in the database.` 
+            });
+        }
         res.status(500).json({ error: 'Failed to add book' });
     }
 });
@@ -344,6 +371,22 @@ app.post('/api/books', async (req, res) => {
 app.put('/api/books/:id', async (req, res) => {
     const { id } = req.params;
     const { title, author, description, cover_url, pdf_path, price, rating, is_premium, category_id } = req.body;
+    
+    // Validate category_id exists if provided
+    if (category_id) {
+        try {
+            const categoryCheck = await query('SELECT id FROM categories WHERE id = $1', [category_id]);
+            if (categoryCheck.rows.length === 0) {
+                return res.status(400).json({ 
+                    error: `Category with id ${category_id} does not exist. Please select a valid category.` 
+                });
+            }
+        } catch (e) {
+            console.error('Category validation error:', e);
+            return res.status(500).json({ error: 'Failed to validate category' });
+        }
+    }
+    
     try {
         const result = await query(
             `UPDATE books SET 
@@ -359,8 +402,14 @@ app.put('/api/books/:id', async (req, res) => {
         }
 
         res.json(result.rows[0]);
-    } catch (e) {
-        console.error(e);
+    } catch (e: any) {
+        console.error('Book update error:', e);
+        // Check for foreign key constraint violation
+        if (e.code === '23503') {
+            return res.status(400).json({ 
+                error: `Invalid category_id. The category does not exist in the database.` 
+            });
+        }
         res.status(500).json({ error: 'Failed to update book' });
     }
 });
