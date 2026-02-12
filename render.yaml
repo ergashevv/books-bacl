@@ -15,3 +15,13 @@ services:
           name: books_db # Agar Render-da DB bo'lsa, aks holda qo'lda kiriting
       - key: BOT_TOKEN
         sync: false # Render dashboard'dan qo'lda qo'shing
+      - key: ESKIZ_EMAIL
+        sync: false
+      - key: ESKIZ_PASSWORD
+        sync: false
+      - key: ESKIZ_FROM
+        sync: false
+      - key: ESKIZ_CALLBACK_URL
+        sync: false
+      - key: OTP_HASH_SALT
+        sync: false

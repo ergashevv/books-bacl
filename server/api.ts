@@ -259,6 +259,39 @@ async function sendEskizSms(phone: string, otpCode: string): Promise<void> {
     }
 }
 
+function mapSmsProviderError(error: unknown): { status: number; error: string; reason: string } {
+    const message = String((error as any)?.message || '');
+    if (message.includes('Eskiz credentials are not configured')) {
+        return {
+            status: 503,
+            error: 'SMS xizmati sozlanmagan',
+            reason: 'ESKIZ_CONFIG_MISSING'
+        };
+    }
+
+    if (message.includes('Eskiz auth failed') || message.includes('Eskiz token not found')) {
+        return {
+            status: 502,
+            error: 'SMS provayderga ulanishda xatolik',
+            reason: 'ESKIZ_AUTH_FAILED'
+        };
+    }
+
+    if (message.includes('Eskiz SMS send failed') || message.includes('Eskiz SMS rejected')) {
+        return {
+            status: 502,
+            error: 'SMS yuborilmadi, provayder rad etdi',
+            reason: 'ESKIZ_SEND_FAILED'
+        };
+    }
+
+    return {
+        status: 500,
+        error: 'SMS yuborishda xatolik yuz berdi',
+        reason: 'SMS_UNKNOWN_ERROR'
+    };
+}
+
 async function ensureSmsOtpTable() {
     await query(`
         CREATE TABLE IF NOT EXISTS sms_otp_requests (
@@ -388,7 +421,11 @@ app.post('/api/auth/sms/request-otp', async (req, res) => {
         });
     } catch (e: any) {
         console.error('SMS OTP request error:', e);
-        res.status(500).json({ error: 'SMS yuborishda xatolik yuz berdi' });
+        const mapped = mapSmsProviderError(e);
+        res.status(mapped.status).json({
+            error: mapped.error,
+            reason: mapped.reason
+        });
     }
 });
 
