@@ -39,25 +39,43 @@ export const useBookStore = create<BookState>((set, get) => ({
             if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
             if (category) url += `&category=${category}`;
 
+            console.log('Fetching books from URL:', url);
             const response = await fetch(url);
-            if (!response.ok) throw new Error('Failed to fetch books');
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Failed to fetch books:', response.status, errorText);
+                throw new Error(`Failed to fetch books: ${response.status} ${response.statusText}`);
+            }
 
             const data = await response.json();
-            set({ books: data as Book[], loading: false });
+            console.log('Books fetched successfully:', data?.length || 0, 'books');
+            
+            // Ensure data is an array
+            const booksArray = Array.isArray(data) ? data : [];
+            set({ books: booksArray as Book[], loading: false, error: null });
         } catch (error: any) {
-            set({ error: error.message, loading: false });
+            console.error('Fetch books error:', error);
+            set({ error: error.message || 'Kitoblar yuklanmadi', loading: false, books: [] });
         }
     },
 
     fetchCategories: async () => {
         try {
-            const response = await fetch(`${API_URL}/api/categories`);
+            const url = `${API_URL}/api/categories`;
+            console.log('Fetching categories from URL:', url);
+            const response = await fetch(url);
+            
             if (response.ok) {
                 const data = await response.json();
-                set({ categories: data });
+                console.log('Categories fetched successfully:', data?.length || 0, 'categories');
+                set({ categories: Array.isArray(data) ? data : [] });
+            } else {
+                console.error('Failed to fetch categories:', response.status, response.statusText);
             }
         } catch (e) {
             console.error('Fetch categories error:', e);
+            set({ categories: [] });
         }
     },
 
@@ -77,10 +95,17 @@ export const useBookStore = create<BookState>((set, get) => ({
     getBookDetail: async (bookId) => {
         try {
             // 1. Fetch Book info
-            const response = await fetch(`${API_URL}/api/books/${bookId}`);
-            if (!response.ok) return null;
+            const url = `${API_URL}/api/books/${bookId}`;
+            console.log('Fetching book detail from URL:', url);
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                console.error('Failed to fetch book detail:', response.status, response.statusText);
+                return null;
+            }
 
             const book = await response.json();
+            console.log('Book detail fetched successfully:', book?.title);
 
             // 2. Fetch Audio Tracks (If we had them in Neon)
             // For now, return empty audio

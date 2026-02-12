@@ -1,7 +1,7 @@
 services:
   - type: web
     name: books-backend
-    env: node
+    runtime: node
     plan: standard
     buildCommand: cd server && npm install && npm run build
     startCommand: cd server && npm start

@@ -73,6 +73,24 @@ async function setupDatabase() {
         `);
         console.log('✅ Auth requests table created');
 
+        // Create sms_otp_requests table (for Eskiz SMS OTP login flow)
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS sms_otp_requests (
+                id SERIAL PRIMARY KEY,
+                phone TEXT NOT NULL,
+                otp_hash TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                ip_address TEXT,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                verified_at TIMESTAMP
+            )
+        `);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_sms_otp_phone_created ON sms_otp_requests(phone, created_at DESC)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_sms_otp_ip_created ON sms_otp_requests(ip_address, created_at DESC)`);
+        console.log('✅ SMS OTP requests table created');
+
         // Insert default categories
         await client.query(`
             INSERT INTO categories (name) VALUES 

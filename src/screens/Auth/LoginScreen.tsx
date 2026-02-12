@@ -2,16 +2,19 @@ import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BookOpen, Sparkles, ArrowRight } from 'lucide-react-native';
 import React from 'react';
-import { Alert, Linking, Text, TouchableOpacity, View, StatusBar, Animated } from 'react-native';
+import { Alert, Linking, Text, TouchableOpacity, View, StatusBar, Animated, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/useAuthStore';
 
 const LoginScreen = () => {
-    const { signInWithTelegramRealtime } = useAuthStore();
+    const { signInWithTelegramRealtime, requestSmsOtp, verifySmsOtp, loading } = useAuthStore();
     const navigation = useNavigation();
     const insets = useSafeAreaInsets();
     const fadeAnim = React.useRef(new Animated.Value(0)).current;
     const slideAnim = React.useRef(new Animated.Value(50)).current;
+    const [phone, setPhone] = React.useState('');
+    const [otpCode, setOtpCode] = React.useState('');
+    const [smsCooldown, setSmsCooldown] = React.useState(0);
 
     React.useEffect(() => {
         Animated.parallel([
@@ -32,6 +35,32 @@ const LoginScreen = () => {
         try {
             const deepLink = await signInWithTelegramRealtime();
             await Linking.openURL(deepLink);
+        } catch (error: any) {
+            Alert.alert('Xatolik', error.message);
+        }
+    };
+
+    React.useEffect(() => {
+        if (smsCooldown <= 0) return;
+        const timer = setInterval(() => {
+            setSmsCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [smsCooldown]);
+
+    const handleSendSmsCode = async () => {
+        try {
+            const result = await requestSmsOtp(phone);
+            setSmsCooldown(result.retry_after_seconds ?? 120);
+            Alert.alert('Yuborildi', 'Tasdiqlash kodi SMS orqali yuborildi.');
+        } catch (error: any) {
+            Alert.alert('Xatolik', error.message);
+        }
+    };
+
+    const handleVerifySmsCode = async () => {
+        try {
+            await verifySmsOtp(phone, otpCode);
         } catch (error: any) {
             Alert.alert('Xatolik', error.message);
         }
@@ -101,6 +130,45 @@ const LoginScreen = () => {
                             </Text>
                             <ArrowRight size={20} color="#34A853" />
                         </TouchableOpacity>
+
+                        <View className="bg-white/10 border border-white/25 rounded-2xl p-4 mb-4">
+                            <Text className="text-white text-base font-semibold mb-3">
+                                SMS orqali kirish
+                            </Text>
+                            <TextInput
+                                value={phone}
+                                onChangeText={setPhone}
+                                placeholder="+998901234567"
+                                placeholderTextColor="rgba(255,255,255,0.6)"
+                                keyboardType="phone-pad"
+                                className="bg-white/15 text-white rounded-xl px-4 h-12 mb-3"
+                            />
+                            <TextInput
+                                value={otpCode}
+                                onChangeText={setOtpCode}
+                                placeholder="6 xonali kod"
+                                placeholderTextColor="rgba(255,255,255,0.6)"
+                                keyboardType="number-pad"
+                                maxLength={6}
+                                className="bg-white/15 text-white rounded-xl px-4 h-12 mb-3"
+                            />
+                            <TouchableOpacity
+                                onPress={handleSendSmsCode}
+                                disabled={smsCooldown > 0}
+                                className="bg-white rounded-xl h-12 items-center justify-center mb-2"
+                            >
+                                <Text className="text-primary font-bold">
+                                    {smsCooldown > 0 ? `Qayta yuborish ${smsCooldown}s` : 'SMS kod yuborish'}
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={handleVerifySmsCode}
+                                disabled={loading}
+                                className="bg-primary rounded-xl h-12 items-center justify-center"
+                            >
+                                <Text className="text-white font-bold">Kod bilan kirish</Text>
+                            </TouchableOpacity>
+                        </View>
 
                         <TouchableOpacity
                             onPress={() => navigation.navigate('Signup' as never)}

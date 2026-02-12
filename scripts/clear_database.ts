@@ -64,6 +64,7 @@ async function clearDatabase() {
         // 3. Clear auth-related tables
         const authTables = [
             'auth_requests',
+            'sms_otp_requests',
             'users',
             'app_users',
         ];

@@ -1,5 +1,5 @@
 import cors from 'cors';
-import { randomUUID } from 'crypto';
+import { createHash, randomInt, randomUUID } from 'crypto';
 import 'dotenv/config';
 import express from 'express';
 import multer from 'multer';
@@ -168,6 +168,115 @@ async function query(text: string, params?: any[]) {
     }
 }
 
+function normalizePhone(phone: string): string {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('998') && digits.length === 12) {
+        return `+${digits}`;
+    }
+    if (digits.length === 9) {
+        return `+998${digits}`;
+    }
+    if (digits.length === 12 && digits.startsWith('998')) {
+        return `+${digits}`;
+    }
+    return '';
+}
+
+function buildOtpHash(phone: string, otpCode: string): string {
+    const salt = process.env.OTP_HASH_SALT || 'book-otp-salt';
+    return createHash('sha256').update(`${phone}:${otpCode}:${salt}`).digest('hex');
+}
+
+let eskizTokenCache: { token: string; expiresAt: number } | null = null;
+
+async function getEskizToken(): Promise<string> {
+    const now = Date.now();
+    if (eskizTokenCache && eskizTokenCache.expiresAt > now + 60_000) {
+        return eskizTokenCache.token;
+    }
+
+    const email = process.env.ESKIZ_EMAIL;
+    const password = process.env.ESKIZ_PASSWORD;
+    if (!email || !password) {
+        throw new Error('Eskiz credentials are not configured');
+    }
+
+    const body = new URLSearchParams({ email, password });
+    const response = await fetch('https://notify.eskiz.uz/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    });
+
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Eskiz auth failed: ${text}`);
+    }
+
+    const data: any = await response.json();
+    const token = data?.data?.token;
+    if (!token) {
+        throw new Error('Eskiz token not found in response');
+    }
+
+    eskizTokenCache = {
+        token,
+        expiresAt: now + 25 * 60 * 1000
+    };
+    return token;
+}
+
+async function sendEskizSms(phone: string, otpCode: string): Promise<void> {
+    const from = process.env.ESKIZ_FROM || '4546';
+    const message = `Book ilovasi uchun tasdiqlash kodi: ${otpCode}. Kod 5 daqiqa amal qiladi.`;
+    const token = await getEskizToken();
+
+    const body = new URLSearchParams({
+        mobile_phone: phone.replace('+', ''),
+        message,
+        from,
+        callback_url: process.env.ESKIZ_CALLBACK_URL || ''
+    });
+
+    const response = await fetch('https://notify.eskiz.uz/api/message/sms/send', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: body.toString()
+    });
+
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Eskiz SMS send failed: ${text}`);
+    }
+
+    const data: any = await response.json();
+    const status = data?.status;
+    if (status !== 'waiting' && status !== 'success') {
+        throw new Error(`Eskiz SMS rejected: ${JSON.stringify(data)}`);
+    }
+}
+
+async function ensureSmsOtpTable() {
+    await query(`
+        CREATE TABLE IF NOT EXISTS sms_otp_requests (
+            id SERIAL PRIMARY KEY,
+            phone TEXT NOT NULL,
+            otp_hash TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            ip_address TEXT,
+            expires_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            verified_at TIMESTAMP
+        )
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sms_otp_phone_created ON sms_otp_requests(phone, created_at DESC)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sms_otp_ip_created ON sms_otp_requests(ip_address, created_at DESC)`);
+}
+
 // Cleanup function for pool
 process.on('SIGTERM', async () => {
     console.log('🛑 Closing database pool...');
@@ -191,6 +300,184 @@ app.post('/api/create-auth-request', async (req, res) => {
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: 'Failed to create auth request' });
+    }
+});
+
+app.post('/api/auth/sms/request-otp', async (req, res) => {
+    const rawPhone = typeof req.body?.phone === 'string' ? req.body.phone : '';
+    const phone = normalizePhone(rawPhone);
+    if (!phone) {
+        return res.status(400).json({ error: 'Telefon raqam noto\'g\'ri formatda' });
+    }
+
+    const ipAddress = req.ip || req.socket.remoteAddress || '';
+    const cooldownSeconds = 120;
+    const maxPerPhoneHour = 5;
+    const maxPerPhoneDay = 12;
+    const maxPerIpHour = 20;
+
+    try {
+        const recentPhone = await query(
+            `SELECT created_at
+             FROM sms_otp_requests
+             WHERE phone = $1
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [phone]
+        );
+
+        if (recentPhone.rows.length > 0) {
+            const lastCreatedAt = new Date(recentPhone.rows[0].created_at).getTime();
+            const secondsSinceLast = Math.floor((Date.now() - lastCreatedAt) / 1000);
+            if (secondsSinceLast < cooldownSeconds) {
+                return res.status(429).json({
+                    error: 'Yangi kod yuborish uchun biroz kuting',
+                    retry_after_seconds: cooldownSeconds - secondsSinceLast
+                });
+            }
+        }
+
+        const phoneHourCount = await query(
+            `SELECT COUNT(*)::int AS count
+             FROM sms_otp_requests
+             WHERE phone = $1 AND created_at > NOW() - INTERVAL '1 hour'`,
+            [phone]
+        );
+        if (phoneHourCount.rows[0].count >= maxPerPhoneHour) {
+            return res.status(429).json({ error: 'Bu raqamga juda ko\'p kod yuborildi. 1 soatdan keyin urinib ko\'ring.' });
+        }
+
+        const phoneDayCount = await query(
+            `SELECT COUNT(*)::int AS count
+             FROM sms_otp_requests
+             WHERE phone = $1 AND created_at > NOW() - INTERVAL '1 day'`,
+            [phone]
+        );
+        if (phoneDayCount.rows[0].count >= maxPerPhoneDay) {
+            return res.status(429).json({ error: 'Kunlik SMS limiti tugadi. Ertaga qayta urinib ko\'ring.' });
+        }
+
+        const ipHourCount = await query(
+            `SELECT COUNT(*)::int AS count
+             FROM sms_otp_requests
+             WHERE ip_address = $1 AND created_at > NOW() - INTERVAL '1 hour'`,
+            [ipAddress]
+        );
+        if (ipHourCount.rows[0].count >= maxPerIpHour) {
+            return res.status(429).json({ error: 'Juda ko\'p so\'rov yuborildi. Birozdan keyin qayta urinib ko\'ring.' });
+        }
+
+        const otpCode = `${randomInt(100000, 1000000)}`;
+        const otpHash = buildOtpHash(phone, otpCode);
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+        await sendEskizSms(phone, otpCode);
+
+        const insertResult = await query(
+            `INSERT INTO sms_otp_requests (phone, otp_hash, status, attempts, ip_address, expires_at)
+             VALUES ($1, $2, 'pending', 0, $3, $4)
+             RETURNING id`,
+            [phone, otpHash, ipAddress, expiresAt]
+        );
+
+        res.json({
+            ok: true,
+            request_id: insertResult.rows[0].id,
+            expires_in_seconds: 300,
+            retry_after_seconds: cooldownSeconds
+        });
+    } catch (e: any) {
+        console.error('SMS OTP request error:', e);
+        res.status(500).json({ error: 'SMS yuborishda xatolik yuz berdi' });
+    }
+});
+
+app.post('/api/auth/sms/verify-otp', async (req, res) => {
+    const rawPhone = typeof req.body?.phone === 'string' ? req.body.phone : '';
+    const rawCode = typeof req.body?.code === 'string' ? req.body.code : '';
+    const phone = normalizePhone(rawPhone);
+    const code = rawCode.replace(/\D/g, '');
+
+    if (!phone || code.length !== 6) {
+        return res.status(400).json({ error: 'Telefon yoki kod noto\'g\'ri' });
+    }
+
+    try {
+        const otpResult = await query(
+            `SELECT id, otp_hash, attempts, expires_at
+             FROM sms_otp_requests
+             WHERE phone = $1 AND status = 'pending'
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [phone]
+        );
+
+        if (otpResult.rows.length === 0) {
+            return res.status(400).json({ error: 'Faol kod topilmadi. Qayta kod so\'rang.' });
+        }
+
+        const otpRequest = otpResult.rows[0];
+        if (new Date(otpRequest.expires_at).getTime() < Date.now()) {
+            await query(`UPDATE sms_otp_requests SET status = 'expired' WHERE id = $1`, [otpRequest.id]);
+            return res.status(400).json({ error: 'Kodning amal qilish muddati tugagan' });
+        }
+
+        if (Number(otpRequest.attempts) >= 5) {
+            await query(`UPDATE sms_otp_requests SET status = 'failed' WHERE id = $1`, [otpRequest.id]);
+            return res.status(429).json({ error: 'Juda ko\'p noto\'g\'ri urinish. Qayta kod so\'rang.' });
+        }
+
+        const inputHash = buildOtpHash(phone, code);
+        if (inputHash !== otpRequest.otp_hash) {
+            await query(`UPDATE sms_otp_requests SET attempts = attempts + 1 WHERE id = $1`, [otpRequest.id]);
+            return res.status(400).json({ error: 'Kod noto\'g\'ri' });
+        }
+
+        await query(
+            `UPDATE sms_otp_requests
+             SET status = 'verified', verified_at = NOW()
+             WHERE id = $1`,
+            [otpRequest.id]
+        );
+
+        const smsTelegramId = `sms:${phone}`;
+        let userResult = await query(`SELECT * FROM users WHERE phone = $1 LIMIT 1`, [phone]);
+
+        if (userResult.rows.length === 0) {
+            userResult = await query(`SELECT * FROM users WHERE telegram_id = $1 LIMIT 1`, [smsTelegramId]);
+        }
+
+        let user;
+        if (userResult.rows.length > 0) {
+            user = userResult.rows[0];
+            await query(`UPDATE users SET phone = $1, last_login_at = NOW() WHERE id = $2`, [phone, user.id]);
+            const updatedUser = await query(`SELECT * FROM users WHERE id = $1`, [user.id]);
+            user = updatedUser.rows[0];
+        } else {
+            const inserted = await query(
+                `INSERT INTO users (telegram_id, full_name, username, phone, avatar_url, last_login_at)
+                 VALUES ($1, $2, $3, $4, $5, NOW())
+                 RETURNING *`,
+                [smsTelegramId, `SMS user ${phone}`, null, phone, null]
+            );
+            user = inserted.rows[0];
+        }
+
+        return res.json({
+            status: 'completed',
+            user: {
+                id: user.id,
+                telegram_id: user.telegram_id,
+                full_name: user.full_name,
+                username: user.username,
+                phone: user.phone,
+                avatar_url: user.avatar_url,
+                role: user.role
+            }
+        });
+    } catch (e) {
+        console.error('SMS OTP verify error:', e);
+        return res.status(500).json({ error: 'Kodni tekshirishda xatolik yuz berdi' });
     }
 });
 
@@ -786,6 +1073,10 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     if (!res.headersSent) {
         res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+ensureSmsOtpTable().catch((e) => {
+    console.error('Failed to ensure sms_otp_requests table:', e);
 });
 
 const PORT = Number(process.env.PORT) || 3001;

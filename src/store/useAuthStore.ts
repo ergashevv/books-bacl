@@ -21,6 +21,8 @@ interface AuthState {
     session: UserSession | null;
     loading: boolean;
     signInWithTelegramRealtime: () => Promise<string>;
+    requestSmsOtp: (phone: string) => Promise<{ retry_after_seconds?: number }>;
+    verifySmsOtp: (phone: string, code: string) => Promise<void>;
     signOut: () => Promise<void>;
     checkSession: () => Promise<void>;
 }
@@ -112,6 +114,48 @@ export const useAuthStore = create<AuthState>((set) => ({
             return deepLink;
         } catch (e) {
             console.error(e);
+            set({ loading: false });
+            throw e;
+        }
+    },
+
+    requestSmsOtp: async (phone: string) => {
+        const response = await fetch(`${API_URL}/api/auth/sms/request-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data?.error || 'SMS kod yuborilmadi');
+        }
+
+        return { retry_after_seconds: data?.retry_after_seconds };
+    },
+
+    verifySmsOtp: async (phone: string, code: string) => {
+        set({ loading: true });
+        try {
+            const response = await fetch(`${API_URL}/api/auth/sms/verify-otp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone, code })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data?.error || 'Kod tasdiqlanmadi');
+            }
+
+            const user = data?.user;
+            if (!user?.id) {
+                throw new Error('Foydalanuvchi topilmadi');
+            }
+
+            await storage.setItem('app_user_id', user.id.toString());
+            set({ session: { user }, loading: false });
+        } catch (e) {
             set({ loading: false });
             throw e;
         }

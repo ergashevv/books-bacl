@@ -10,19 +10,26 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useBookStore } from '../../store/useBookStore';
 
 const HomeScreen = () => {
-    const { books, loading, fetchBooks, categories, fetchCategories } = useBookStore();
+    const { books, loading, error, fetchBooks, categories, fetchCategories } = useBookStore();
     const { session } = useAuthStore();
     const navigation = useNavigation();
     const [search, setSearch] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+    const uiColors = {
+        brand: '#2F9E44',
+        brandDark: '#237B34',
+        iconMuted: '#64748B',
+    };
 
     useEffect(() => {
         fetchCategories();
-    }, [fetchCategories]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         fetchBooks(selectedCategory || undefined, search || undefined);
-    }, [selectedCategory, search, fetchBooks]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedCategory, search]);
 
     const userName = session?.user?.full_name || 'Reader';
 
@@ -38,8 +45,8 @@ const HomeScreen = () => {
                         Find your next favorite read
                     </Text>
                 </View>
-                <TouchableOpacity className="bg-white dark:bg-surface-dark p-3 rounded-lg shadow-soft">
-                    <Bell size={20} color="#34A853" />
+                <TouchableOpacity className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 shadow-soft">
+                    <Bell size={20} color={uiColors.brand} />
                 </TouchableOpacity>
             </View>
 
@@ -52,7 +59,7 @@ const HomeScreen = () => {
                         className="relative h-48 rounded-lg overflow-hidden shadow-soft"
                     >
                         <LinearGradient
-                            colors={['#34A853', '#2E7D32']}
+                            colors={[uiColors.brand, uiColors.brandDark]}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
                             className="absolute inset-0"
@@ -64,7 +71,7 @@ const HomeScreen = () => {
                                 <Text className="text-white text-[18px] font-bold leading-tight mb-2" numberOfLines={2}>
                                     {books[0].title}
                                 </Text>
-                                <Text className="text-green-50 text-[13px] font-medium mb-3">
+                                <Text className="text-emerald-50 text-[13px] font-medium mb-3">
                                     {books[0].author}
                                 </Text>
                             </View>
@@ -86,8 +93,8 @@ const HomeScreen = () => {
 
             {/* Figma Search Bar */}
             <View className="px-6 mb-6">
-                <View className="flex-row items-center bg-white dark:bg-surface-dark rounded-lg px-4 py-3 shadow-soft">
-                    <Search size={18} color="#94A3B8" style={{ marginRight: 10 }} />
+                <View className="flex-row items-center bg-white dark:bg-slate-800 rounded-xl px-4 py-3 shadow-soft border border-slate-100 dark:border-slate-700">
+                    <Search size={18} color={uiColors.iconMuted} style={{ marginRight: 10 }} />
                     <TextInput
                         className="flex-1 text-[14px] font-medium text-slate-900 dark:text-white h-full"
                         placeholder="Search books..."
@@ -95,8 +102,8 @@ const HomeScreen = () => {
                         value={search}
                         onChangeText={setSearch}
                     />
-                    <TouchableOpacity className="ml-2">
-                        <Filter size={18} color="#34A853" />
+                    <TouchableOpacity className="ml-2 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-2 rounded-lg">
+                        <Filter size={18} color={uiColors.brand} />
                     </TouchableOpacity>
                 </View>
             </View>
@@ -144,8 +151,24 @@ const HomeScreen = () => {
 
             {loading && !books.length ? (
                 <View className="flex-1 justify-center items-center">
-                    <ActivityIndicator size="large" color="#34A853" />
-                    <Text className="mt-4 font-medium text-slate-400">Loading...</Text>
+                    <ActivityIndicator size="large" color={uiColors.brand} />
+                    <Text className="mt-4 font-medium text-slate-500 dark:text-slate-400">Loading...</Text>
+                </View>
+            ) : error ? (
+                <View className="flex-1 justify-center items-center px-6">
+                    <Text className="text-red-500 text-center font-medium mb-4">{error}</Text>
+                    <TouchableOpacity
+                        onPress={() => fetchBooks(selectedCategory || undefined, search || undefined)}
+                        className="bg-primary px-6 py-3 rounded-lg"
+                    >
+                        <Text className="text-white font-bold">Qayta urinish</Text>
+                    </TouchableOpacity>
+                </View>
+            ) : books.length === 0 ? (
+                <View className="flex-1 justify-center items-center px-6">
+                    <Text className="text-slate-400 text-center font-medium">
+                        {search || selectedCategory ? 'Kitoblar topilmadi' : 'Kitoblar mavjud emas'}
+                    </Text>
                 </View>
             ) : (
                 <FlatList

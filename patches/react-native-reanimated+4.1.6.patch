@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-native-reanimated/src/platform-specific/workletsVersion.ts b/node_modules/react-native-reanimated/src/platform-specific/workletsVersion.ts
+index 8c8e496..21fb5ad 100644
+--- a/node_modules/react-native-reanimated/src/platform-specific/workletsVersion.ts
++++ b/node_modules/react-native-reanimated/src/platform-specific/workletsVersion.ts
+@@ -1,7 +1,7 @@
+ 'use strict';
+ 
+ // @ts-expect-error There's no types for this script.
+-import validateWorkletsVersion from 'react-native-reanimated/scripts/validate-worklets-version';
++import validateWorkletsVersion from '../../scripts/validate-worklets-version';
+ 
+ import { ReanimatedError } from '../common/errors';
+ import { jsVersion as reanimatedVersion } from './jsVersion';
